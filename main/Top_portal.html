@@ -1,0 +1,50 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WIDF Manager — WiFi Setup</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#f0f2f5;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:16px}
+.card{background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.10);padding:24px;width:100%;max-width:420px;margin-bottom:12px}
+.status{font-size:.85rem;font-weight:600;padding:10px 14px;border-radius:10px;margin-bottom:16px;background:#f0f2f5;color:#555}
+.status.ok{background:#e6f4ea;color:#2d6a4f}
+.status.off{background:#fff3e0;color:#b5590a}
+h1{font-size:1.4rem;font-weight:700;color:#1a1a2e;margin-bottom:4px}
+.sub{font-size:.85rem;color:#888;margin-bottom:14px}
+.nets{max-height:320px;overflow-y:auto;border:1px solid #eee;border-radius:10px;margin-bottom:4px}
+.net{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;cursor:pointer;border-bottom:1px solid #f5f5f5;transition:background .15s;gap:10px}
+.net:last-child{border-bottom:none}
+.net:hover{background:#f5f7ff}
+.net.sel{background:#eef1ff;border-left:3px solid #4361ee}
+.net.hnet{display:none}
+.netinfo{display:flex;flex-direction:column;flex:1;min-width:0}
+.netname{font-size:.93rem;color:#222;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.netname.hidden{color:#aaa;font-style:italic}
+.netmeta{display:flex;align-items:center;gap:6px;margin-top:2px}
+.dbm{font-size:.75rem;color:#888}
+.enc{font-size:.72rem;background:#f0f2f5;color:#666;border-radius:4px;padding:1px 5px;font-weight:600}
+.enc.open{background:#e6f4ea;color:#2d6a4f}
+.signal{display:flex;align-items:flex-end;gap:2px;height:16px;flex-shrink:0}
+.signal i{display:block;width:4px;border-radius:1px;background:#e0e0e0}
+.signal i:nth-child(1){height:4px}
+.signal i:nth-child(2){height:7px}
+.signal i:nth-child(3){height:11px}
+.signal i:nth-child(4){height:15px}
+.b1 i:nth-child(1){background:#4361ee}
+.b2 i:nth-child(-n+2){background:#4361ee}
+.b3 i:nth-child(-n+3){background:#4361ee}
+.b4 i{background:#4361ee}
+label{font-size:.83rem;font-weight:600;color:#555;display:block;margin-bottom:5px;margin-top:14px}
+input[type=text],input[type=password]{width:100%;padding:11px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:.93rem;outline:none}
+input:focus{border-color:#4361ee}
+.pw{position:relative;margin-bottom:0}
+.pw input{padding-right:60px}
+.eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#4361ee;font-size:.82rem;font-weight:600;cursor:pointer}
+.btn{display:block;width:100%;padding:12px;border:none;border-radius:10px;font-size:.95rem;font-weight:600;cursor:pointer;margin-top:10px;text-align:center;text-decoration:none}
+.pri{background:#4361ee;color:#fff}
+.sec{background:#f0f2f5;color:#555}
+.hint{font-size:.8rem;color:#888;margin-top:8px;min-height:18px;text-align:center}
+</style></head><body><div style="width:100%;max-width:420px">
+<div class="card">
+<h1>WiFi Setup</h1>
+<p class="sub">Select a network and enter the password</p>

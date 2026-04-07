@@ -1,0 +1,78 @@
+menu "WIDF Manager Configuration"
+
+    config PORTAL_AP_SSID
+        string "Portal AP SSID"
+        default "WIDF-MANAGER"
+        help
+            SSID (network name) broadcasted by the captive portal AP to connect to.
+
+    config PORTAL_AP_CHANNEL
+        int "Portal AP Channel"
+        range 1 13
+        default 3
+        help
+            WiFi channel (network channel) for the portal AP.
+
+    config PORTAL_MAX_STA_CONN
+        int "Maximal STA connections"
+        range 1 10
+        default 5
+        help
+            Max number of devices that can connect to the portal AP.
+
+    config PORTAL_TIMEOUT_S
+        int "Portal timeout (seconds)"
+        range 30 600
+        default 180
+        help
+            How long the portal stays open before shutting down if no
+            credentials are submitted. After timeout, a long press on the
+            button reopens the portal.
+
+    config PORTAL_MAX_RETRY
+        int "STA connection retries"
+        range 1 10
+        default 3
+        help
+            Number of times to retry a STA connection before giving up
+            and opening the portal for new credentials.
+
+    config PORTAL_BUTTON_GPIO
+        int "Portal reopen button GPIO pin"
+        range 0 48
+        default 3
+        help
+            GPIO pin for the active-low button used to reopen the portal
+            after it has closed or timed out. Default is G3 on M5Stamp C3.
+            Common alternatives: GPIO0 on most ESP32 DevKit boards,
+            GPIO9 on ESP32-C6 and ESP32-H2 DevKit boards.
+
+    config PORTAL_LONG_PRESS_MS
+        int "Long press duration (milliseconds)"
+        range 1000 10000
+        default 3000
+        help
+            How long the button must be held continuously to trigger a
+            portal reopen. 3000 ms (3 seconds) is the default.
+
+    config PORTAL_KEEP_AP_ACTIVE
+        bool "Keep portal AP active after STA connects"
+        default y
+        help
+            If enabled, the portal AP stays up after a successful STA
+            connection so the portal remains accessible for reconfiguration
+            at any time. Disable to switch to pure STA mode after connecting,
+            reducing RF footprint and power consumption.
+            The long press button will still reopen the portal.
+
+    config PORTAL_REBOOT_ON_TIMEOUT
+        bool "Reboot device when portal times out"
+        default n
+        help
+            If enabled, the device reboots when the portal timeout is
+            reached instead of waiting for a long press to reopen.
+            Useful for headless or unattended deployments where no
+            button is accessible. Pair with PORTAL_KEEP_AP_ACTIVE=n
+            for a minimal-footprint headless configuration.
+
+endmenu
