@@ -1,40 +1,21 @@
 /*  widf_mngr_main.c — WIDF Manager system core
- *    WIDF Manager v0.7.5 — ESP-IDF native, ESP32 family 
+ *    WIDF Manager v0.9.0 — ESP-IDF native, ESP32 family
  *
  *    Developed and tested on M5Stamp C3 (ESP32-C3). Compatible with any
- *    ESP32 variant — set PORTAL_BUTTON_GPIO in menuconfig to match your board.
+ *    ESP32 variant — set reopen_gpio in widf_mngr_config_t to match your board.
  *
  *    Handles: NVS init, WiFi init (APSTA), STA connect + retry state machine,
  *    network scan, portal run loop, portal timeout, GPIO long press to
  *    reopen portal. HTTP handlers live in widf_mngr_handlers.c.
  *
  *    Boot sequence:
- *      1. Initialise NVS, GPIO (configurable pin), WiFi (APSTA mode) and event handlers
+ *      1. Initialise NVS, GPIO, WiFi (APSTA mode) and event handlers
  *      2. If saved credentials found -> attempt STA connect, retry up to
- *         PORTAL_MAX_RETRY times, then fall through regardless of result
+ *         config->max_sta_retries times, then fall through regardless of result
  *      3. Scan for nearby networks and run the portal
  *      4. Portal closes on timeout OR when /exit is hit
- *      5. After portal closes -> wait for button long press (configurable duration)
- *         On long press -> attempt STA reconnect -> reopen portal
- *
- *    HTTP routes (9 total) — see widf_mngr_handlers.c:
- *      GET  /              Main menu — WiFi status + navigation
- *      GET  /wifi          WiFi setup — scan results, select network, password
- *      GET  /wifi/refresh  Re-scan networks, redirect back to /wifi
- *      POST /save          Save SSID + password to NVS, reboot
- *      GET  /info          Device info — chip, RAM, flash, uptime, temp, WiFi
- *      GET  /erase         Erase WiFi credentials from NVS, reboot
- *      GET  /ota           OTA firmware update
- *      GET  /restart       Reboot the device
- *      GET  /exit          Shut down portal; long press button to reopen
- *
- *    Configuration (idf.py menuconfig -> WIDF Manager Configuration):
- *      PORTAL_AP_SSID       AP network name broadcast during portal mode
- *      PORTAL_AP_CHANNEL    WiFi channel for the AP (1-13)
- *      PORTAL_MAX_STA_CONN  Maximum simultaneous clients on the AP
- *      PORTAL_TIMEOUT_S     Seconds before the HTTP server auto-shuts down
- *      PORTAL_BUTTON_GPIO   GPIO pin for the portal reopen button (active low)
- *      PORTAL_LONG_PRESS_MS Hold duration in ms to trigger portal reopen
+ *      5. On timeout: reboot if reopen_gpio == 0, else wait for long press
+ *      6. On long press -> attempt STA reconnect -> reopen portal
  */
 
 #include <string.h>
@@ -51,94 +32,95 @@
 #include <stdbool.h>
 #include "lwip/err.h"
 #include "lwip/sys.h"
+#include "mdns.h"
 #include "driver/gpio.h"
 #include "esp_ota_ops.h"
+#include "widf_mngr.h"
 #include "widf_mngr_handlers.h"
 #if CONFIG_PORTAL_DNS_ENABLED
 #include "widf_mngr_dns.h"
 #endif
 
-/* ── Kconfig — values set via idf.py menuconfig ──────────────────────────── */
-#define PORTAL_AP_SSID       CONFIG_PORTAL_AP_SSID
-#define PORTAL_AP_CHANNEL    CONFIG_PORTAL_AP_CHANNEL
-#define PORTAL_MAX_STA_CONN  CONFIG_PORTAL_MAX_STA_CONN
-#define PORTAL_TIMEOUT_S     CONFIG_PORTAL_TIMEOUT_S
-
-#define PORTAL_MAX_RETRY     CONFIG_PORTAL_MAX_RETRY  /* set in menuconfig */
-#define WIFI_SCAN_MAX_AP     20     /* Maximum APs kept from a single scan */
-
-/* ── GPIO — configurable via menuconfig ──────────────────────────────────── */
-/* Default: GPIO3 (G3) on M5Stamp C3, active low.
- *   Change PORTAL_BUTTON_GPIO in menuconfig to match your board:
- *     GPIO0  — most ESP32 DevKit boards
- *     GPIO9  — ESP32-C6 and ESP32-H2 DevKit boards  */
-#define BUTTON_GPIO          CONFIG_PORTAL_BUTTON_GPIO
-#define LONG_PRESS_MS        CONFIG_PORTAL_LONG_PRESS_MS
-#define BUTTON_POLL_MS       50     /* polling interval in ms */
+/* ── Constants ───────────────────────────────────────────────────────────── */
+#define WIFI_SCAN_MAX_AP   20
+#define BUTTON_POLL_MS     50
 
 /* ── Globals ─────────────────────────────────────────────────────────────── */
 static const char *TAG = "widf_mngr";
 
-/* Scan options buffer — declared here, extern'd in widf_mngr_handlers.h */
+/* Active config — set at start of widf_mngr_run(), used by callbacks */
+static const widf_mngr_config_t *s_cfg = NULL;
+
+/* Scan options buffer — extern'd in widf_mngr_handlers.h */
 char g_scan_options[6144] = {0};
 
-static EventGroupHandle_t s_wifi_event_group;   /* signals connect/fail */
+static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT  BIT0
 #define WIFI_FAIL_BIT       BIT1
 
 static int  s_retry_num      = 0;
 static bool s_sta_connecting = false;
 
-/* ── GPIO init ───────────────────────────────────────────────────────────── */
-/* Configure the button pin as input with internal pull-up.
- *   Button pulls to GND when pressed (active low). */
-static void gpio_init_button(void)
+/* STA IP — updated on connect, returned by widf_mngr_get_sta_ip() */
+static char s_sta_ip[16] = {0};
+
+/* ── Public API helpers ──────────────────────────────────────────────────── */
+const char *widf_mngr_get_sta_ip(void)
 {
+    return (s_sta_ip[0] != '\0') ? s_sta_ip : NULL;
+}
+
+static void mdns_start(void)
+{
+    ESP_ERROR_CHECK(mdns_init());
+    ESP_ERROR_CHECK(mdns_hostname_set(s_cfg->hostname));
+    ESP_ERROR_CHECK(mdns_instance_name_set("WIDF Manager"));
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+    ESP_LOGI(TAG, "mDNS started — reachable at %s.local", s_cfg->hostname);
+}
+
+/* ── GPIO ────────────────────────────────────────────────────────────────── */
+static void gpio_init_button(int gpio_pin)
+{
+    if (gpio_pin <= 0) return;
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << BUTTON_GPIO),
+        .pin_bit_mask = (1ULL << gpio_pin),
         .mode         = GPIO_MODE_INPUT,
         .pull_up_en   = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
-    ESP_LOGI(TAG, "Button configured on GPIO%d (%d ms long press)",
-             BUTTON_GPIO, LONG_PRESS_MS);
+    ESP_LOGI(TAG, "Button configured on GPIO%d (%lu ms long press)",
+             gpio_pin, (unsigned long)s_cfg->long_press_ms);
 }
 
-/* Blocks until the button is held LOW for LONG_PRESS_MS milliseconds.
- *   Polls every BUTTON_POLL_MS ms so the CPU can yield between checks.
- *   Returns only when a valid long press is detected. */
-static void wait_for_long_press(void)
+static void wait_for_long_press(int gpio_pin, uint32_t long_press_ms)
 {
     ESP_LOGI(TAG, "Waiting for long press on GPIO%d to reopen portal...",
-             BUTTON_GPIO);
+             gpio_pin);
     uint32_t held_ms = 0;
     while (true) {
-        if (gpio_get_level(BUTTON_GPIO) == 0) {
+        if (gpio_get_level(gpio_pin) == 0) {
             held_ms += BUTTON_POLL_MS;
-            if (held_ms >= LONG_PRESS_MS) {
+            if (held_ms >= long_press_ms) {
                 ESP_LOGI(TAG, "Long press detected — reopening portal");
                 return;
             }
         } else {
-            held_ms = 0;   /* reset if button released before threshold */
+            held_ms = 0;
         }
         vTaskDelay(pdMS_TO_TICKS(BUTTON_POLL_MS));
     }
 }
 
 /* ── Event Handler ───────────────────────────────────────────────────────── */
-/* Handles both WIFI_EVENT and IP_EVENT in a single callback.
- *   s_sta_connecting gates the STA retry logic so it never fires
- *   during AP-only mode or after the connect sequence has concluded. */
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data)
 {
-    if (event_base == WIFI_EVENT) {    g_exit_requested = false;
-
+    if (event_base == WIFI_EVENT) {
         switch (event_id) {
-        	
+
             case WIFI_EVENT_AP_STACONNECTED: {
                 wifi_event_ap_staconnected_t *e = event_data;
                 ESP_LOGI(TAG, "Device " MACSTR " joined portal AP, AID=%d",
@@ -159,13 +141,14 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
             case WIFI_EVENT_STA_DISCONNECTED:
                 if (s_sta_connecting) {
-                    if (s_retry_num < PORTAL_MAX_RETRY) {
+                    uint8_t max_retry = s_cfg ? s_cfg->max_sta_retries : 3;
+                    if (s_retry_num < max_retry) {
                         s_retry_num++;
                         ESP_LOGW(TAG, "Connection failed, retrying (%d/%d)...",
-                                 s_retry_num, PORTAL_MAX_RETRY);
+                                 s_retry_num, max_retry);
                         esp_wifi_connect();
                     } else {
-                        ESP_LOGE(TAG, "All %d attempts failed", PORTAL_MAX_RETRY);
+                        ESP_LOGE(TAG, "All %d attempts failed", max_retry);
                         xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
                     }
                 }
@@ -177,25 +160,22 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = event_data;
-        ESP_LOGI(TAG, "Connected! IP: " IPSTR, IP2STR(&e->ip_info.ip));
+        snprintf(s_sta_ip, sizeof(s_sta_ip), IPSTR, IP2STR(&e->ip_info.ip));
+        ESP_LOGI(TAG, "Connected! IP: %s", s_sta_ip);
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
 
 /* ── NVS ─────────────────────────────────────────────────────────────────── */
-/* Credentials are stored under the "wifi_creds" namespace.
- *   portal_nvs_load_creds() is called at boot and after each long press.
- *   Saving is handled by save_post_handler() in handlers.c.
- *   /erase calls nvs_flash_erase() which wipes the entire NVS partition. */
-#define NVS_NAMESPACE  "wifi_creds"
-#define NVS_KEY_SSID   "ssid"
-#define NVS_KEY_PASS   "password"
+#define NVS_KEY_SSID  "ssid"
+#define NVS_KEY_PASS  "password"
 
 static bool portal_nvs_load_creds(char *ssid, char *password)
 {
+    const char *ns = s_cfg ? s_cfg->nvs_namespace : "wifi_creds";
     nvs_handle_t handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) return false;
+    if (nvs_open(ns, NVS_READONLY, &handle) != ESP_OK) return false;
     size_t ssid_len = 33, pass_len = 65;
     esp_err_t err  = nvs_get_str(handle, NVS_KEY_SSID, ssid, &ssid_len);
     err |= nvs_get_str(handle, NVS_KEY_PASS, password, &pass_len);
@@ -206,15 +186,17 @@ static bool portal_nvs_load_creds(char *ssid, char *password)
 }
 
 /* ── WiFi init ───────────────────────────────────────────────────────────── */
-/* wifi_init_common() — one-time driver init; does NOT call esp_wifi_start().
- *   wifi_configure_ap() — sets APSTA mode and AP config; called once at boot.
- *   STA config is set separately each time we attempt a connection. */
 static void wifi_init_common(void)
 {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
     esp_netif_create_default_wifi_ap();
-    esp_netif_create_default_wifi_sta();
+
+    /* Set hostname on STA interface */
+    if (s_cfg && s_cfg->hostname[0] != '\0') {
+        esp_netif_set_hostname(sta_netif, s_cfg->hostname);
+    }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -229,25 +211,24 @@ static void wifi_configure_ap(void)
 {
     wifi_config_t ap_cfg = {
         .ap = {
-            .channel        = PORTAL_AP_CHANNEL,
-            .max_connection = PORTAL_MAX_STA_CONN,
-            .authmode       = WIFI_AUTH_OPEN,
+            .channel        = CONFIG_PORTAL_AP_CHANNEL,
+            .max_connection = CONFIG_PORTAL_MAX_STA_CONN,
+            .authmode       = s_cfg->ap_authmode,
         },
     };
-    strncpy((char *)ap_cfg.ap.ssid, PORTAL_AP_SSID, sizeof(ap_cfg.ap.ssid) - 1);
-    ap_cfg.ap.ssid_len = strlen(PORTAL_AP_SSID);
+    strncpy((char *)ap_cfg.ap.ssid, s_cfg->ap_ssid, sizeof(ap_cfg.ap.ssid) - 1);
+    ap_cfg.ap.ssid_len = strlen(s_cfg->ap_ssid);
+
+    if (s_cfg->ap_authmode != WIFI_AUTH_OPEN) {
+        strncpy((char *)ap_cfg.ap.password, s_cfg->ap_password,
+                sizeof(ap_cfg.ap.password) - 1);
+    }
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
 }
 
 /* ── WiFi scan ───────────────────────────────────────────────────────────── */
-/* Blocking scan — populates g_scan_options with HTML div elements for each AP.
- *   Hidden networks show BSSID instead of SSID and use the .hnet CSS class.
- *   WPA3 cases are guarded by CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT so the code
- *   compiles cleanly on targets or IDF versions without WPA3 support.
- *   Must be called after esp_wifi_start(). */
-
 static void wifi_scan(void)
 {
     wifi_scan_config_t scan_cfg = {
@@ -266,9 +247,6 @@ static void wifi_scan(void)
 }
 
 /* ── STA connect ─────────────────────────────────────────────────────────── */
-/* Attempt STA connection using saved credentials.
- *   Uses esp_wifi_connect() directly — wifi is already started in APSTA mode.
- *   Returns true if connected, false after PORTAL_MAX_RETRY failures. */
 static bool try_sta_connect(const char *ssid, const char *password)
 {
     wifi_config_t sta_cfg = {0};
@@ -280,7 +258,7 @@ static bool try_sta_connect(const char *ssid, const char *password)
     s_retry_num        = 0;
     s_sta_connecting   = true;
 
-    esp_wifi_connect();   /* first attempt — subsequent retries via event handler */
+    esp_wifi_connect();
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
@@ -293,26 +271,20 @@ static bool try_sta_connect(const char *ssid, const char *password)
 }
 
 /* ── Portal run ──────────────────────────────────────────────────────────── */
-/* Scan, start the web server, then block until either:
- *   - PORTAL_TIMEOUT_S seconds elapse (idle timeout), or
- *   - g_exit_requested is set by exit_handler (/exit route).
- *   On timeout: reboots if PORTAL_REBOOT_ON_TIMEOUT is set, otherwise returns
- *   to app_main which waits for a long press.
- *   Stops the server before returning or rebooting either way. */
 static void portal_run(void)
 {
     g_exit_requested = false;
     wifi_scan();
-    #if CONFIG_PORTAL_DNS_ENABLED
+#if CONFIG_PORTAL_DNS_ENABLED
     dns_server_start();
-    #endif
+#endif
     start_webserver();
 
-    ESP_LOGI(TAG, "Portal open — timeout in %d s, or press Exit in browser",
-             PORTAL_TIMEOUT_S);
+    ESP_LOGI(TAG, "Portal open — timeout in %lu s, or press Exit in browser",
+             (unsigned long)s_cfg->portal_timeout_s);
 
     uint32_t elapsed_ms = 0;
-    uint32_t timeout_ms = (uint32_t)PORTAL_TIMEOUT_S * 1000;
+    uint32_t timeout_ms = s_cfg->portal_timeout_s * 1000;
 
     while (elapsed_ms < timeout_ms) {
         if (g_exit_requested) {
@@ -331,33 +303,22 @@ static void portal_run(void)
         httpd_stop(g_server);
         g_server = NULL;
     }
-    #if CONFIG_PORTAL_DNS_ENABLED
+#if CONFIG_PORTAL_DNS_ENABLED
     dns_server_stop();
-    #endif
-
-#if CONFIG_PORTAL_REBOOT_ON_TIMEOUT
-    if (!g_exit_requested) {
-        ESP_LOGW(TAG, "PORTAL_REBOOT_ON_TIMEOUT enabled — rebooting");
-        esp_restart();
-    }
 #endif
 }
 
-/* ── Main ────────────────────────────────────────────────────────────────── */
-/* Boot sequence:
- *   1. NVS init, GPIO button init, WiFi common init + AP config
- *   2. esp_wifi_start() — APSTA mode, AP always up
- *   3. If saved credentials exist -> try STA connect
- *   4. Run portal (scan + HTTP server + timeout/exit loop)
- *   5. Portal closed -> wait for button long press
- *   6. On long press -> try STA reconnect -> reopen portal (goto 4) */
-void app_main(void)
+/* ── Public API ──────────────────────────────────────────────────────────── */
+esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
 {
-    /* Mark this boot as successful — prevents rollback to previous firmware
-     *       Must be called early in app_main after a successful OTA update boots. */
+    /* Use default config if NULL passed */
+    widf_mngr_config_t default_cfg = WIDF_MNGR_DEFAULT_CONFIG();
+    s_cfg = config ? config : &default_cfg;
+
+    /* Mark OTA boot as valid */
     esp_ota_mark_app_valid_cancel_rollback();
 
-    /* NVS — erase and reinit if partition is full or firmware was updated */
+    /* NVS init */
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -365,7 +326,10 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    gpio_init_button();
+    /* GPIO init — skip if reopen_gpio == 0 (headless/reboot mode) */
+    gpio_init_button(s_cfg->reopen_gpio);
+
+    /* WiFi init */
     wifi_init_common();
     wifi_configure_ap();
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -373,53 +337,82 @@ void app_main(void)
     /* Initial STA connect attempt */
     char ssid[33]     = {0};
     char password[65] = {0};
+    bool connected    = false;
+
     if (portal_nvs_load_creds(ssid, password)) {
         ESP_LOGI(TAG, "Trying saved credentials for: %s", ssid);
-        if (try_sta_connect(ssid, password)) {
-            ESP_LOGI(TAG, "Connected to \"%s\" — portal also running", ssid);
-#if !CONFIG_PORTAL_KEEP_AP_ACTIVE
-            /* Switch to pure STA — shuts down the AP to reduce RF footprint */
-            ESP_LOGI(TAG, "PORTAL_KEEP_AP_ACTIVE disabled — stopping AP");
-            esp_wifi_set_mode(WIFI_MODE_STA);
-#endif
+        connected = try_sta_connect(ssid, password);
+        if (connected) {
+            ESP_LOGI(TAG, "Connected to \"%s\"", ssid);
+            mdns_start();
+            if (!s_cfg->sta_access) {
+                /* sta_access off: shut AP down after STA connects */
+                esp_wifi_set_mode(WIFI_MODE_STA);
+                ESP_LOGI(TAG, "sta_access disabled — AP stopped");
+            }
         } else {
-            ESP_LOGW(TAG, "Could not connect to \"%s\" — portal open for new credentials", ssid);
+            ESP_LOGW(TAG, "Could not connect to \"%s\" — opening portal", ssid);
         }
     } else {
         ESP_LOGI(TAG, "No saved credentials — starting portal");
     }
 
-    /* Main loop — portal -> wait for long press -> reconnect -> repeat */
+    /* Main loop */
     while (true) {
-        portal_run();
-
-        /* Portal is now closed — check if we have a connection */
-        wifi_ap_record_t ap_info;
-        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-            ESP_LOGI(TAG, "Still connected to \"%s\" — waiting for long press on GPIO%d",
-                     (char *)ap_info.ssid, BUTTON_GPIO);
-        } else {
-            ESP_LOGW(TAG, "Not connected — waiting for long press on GPIO%d to reopen portal",
-                     BUTTON_GPIO);
+        /* sta_access mode: portal always runs, AP only up when not connected */
+        if (s_cfg->sta_access && connected) {
+            /* Keep portal running on STA IP, no AP needed */
+            ESP_LOGI(TAG, "sta_access: portal running on STA IP %s", s_sta_ip);
         }
 
-        wait_for_long_press();
+        portal_run();
 
-        /* Try to reconnect with saved credentials before reopening portal */
+        /* After portal closes */
+        wifi_ap_record_t ap_info;
+        connected = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
+
+        if (s_cfg->reopen_gpio <= 0) {
+            /* Headless mode — reboot on timeout */
+            ESP_LOGW(TAG, "reopen_gpio not set — rebooting");
+            esp_restart();
+        }
+
+        /* GPIO mode — wait for long press */
+        if (connected) {
+            ESP_LOGI(TAG, "Still connected to \"%s\" — waiting for long press on GPIO%d",
+                     (char *)ap_info.ssid, s_cfg->reopen_gpio);
+        } else {
+            ESP_LOGW(TAG, "Not connected — waiting for long press on GPIO%d",
+                     s_cfg->reopen_gpio);
+        }
+
+        wait_for_long_press(s_cfg->reopen_gpio, s_cfg->long_press_ms);
+
+        /* Reconnect attempt before reopening portal */
         memset(ssid,     0, sizeof(ssid));
         memset(password, 0, sizeof(password));
         if (portal_nvs_load_creds(ssid, password)) {
             ESP_LOGI(TAG, "Long press: trying STA reconnect to \"%s\"", ssid);
-            if (try_sta_connect(ssid, password)) {
+            connected = try_sta_connect(ssid, password);
+            if (connected) {
                 ESP_LOGI(TAG, "Reconnected to \"%s\"", ssid);
+                mdns_start();
             } else {
                 ESP_LOGW(TAG, "Reconnect failed — opening portal for new credentials");
             }
         } else {
             ESP_LOGI(TAG, "Long press: no saved credentials — opening portal");
         }
-        /* Loop back to portal_run() */
     }
+
+    return ESP_OK;
+}
+
+/* ── Entry point ─────────────────────────────────────────────────────────── */
+void app_main(void)
+{
+    widf_mngr_config_t cfg = WIDF_MNGR_DEFAULT_CONFIG();
+    widf_mngr_run(&cfg);
 }
 
 /* ── End of widf_mngr_main.c ─────────────────────────────────────────────── */

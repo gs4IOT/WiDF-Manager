@@ -220,6 +220,14 @@ void build_scan_options(wifi_ap_record_t *records, uint16_t count)
 
 /* ── HTTP Handlers ───────────────────────────────────────────────────────── */
 
+/* GET /favicon.ico — return 204 No Content to suppress browser 404 noise */
+esp_err_t favicon_handler(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
 /* GET / — main menu
  *   Shows live STA connection status and navigation buttons to all pages.
  *   Page is built in two snprintf passes (body + page) to stay within
@@ -481,7 +489,7 @@ esp_err_t info_get_handler(httpd_req_t *req)
                              "</style></head><body>");
 
     /* Device card — temperature row uses temp_str which is "N/A" on unsupported chips */
-    char card[1024] = {0};
+    char card[1536] = {0};
     snprintf(card, sizeof(card),
              "<div class='card'><h2>Device</h2>"
              "<div class='row'><span class='lbl'>Chip</span><span class='val'>%s rev %d</span></div>"
@@ -524,7 +532,7 @@ esp_err_t info_get_handler(httpd_req_t *req)
     httpd_resp_sendstr_chunk(req, wifi_card);
 
     /* About card */
-    char about[1024] = {0};
+    char about[2048] = {0};
     snprintf(about, sizeof(about),
              "<div class='card'><h2>About</h2>"
              "<div class='row'><span class='lbl'>App version</span><span class='val'>%s</span></div>"
@@ -542,6 +550,8 @@ esp_err_t info_get_handler(httpd_req_t *req)
              "<tr><td>/restart</td><td>Reboot the device</td></tr>"
              "<tr><td>/exit</td><td>Shut down portal</td></tr>"
              "<tr><td>/erase</td><td>Erase WiFi credentials and reboot</td></tr>"
+             "<tr><td>/favicon.ico</td><td>Suppress browser icon request</td></tr>"
+             "<tr><td>/generate_204</td><td>Android captive portal redirect</td></tr>"
              "</table></div>",
              app_desc->version, app_desc->idf_ver, app_desc->date, app_desc->time);
     httpd_resp_sendstr_chunk(req, about);
@@ -932,7 +942,9 @@ httpd_handle_t start_webserver(void)
     httpd_uri_t restart_uri = { .uri = "/restart",      .method = HTTP_GET,  .handler = restart_handler     };
     httpd_uri_t exit_uri    = { .uri = "/exit",         .method = HTTP_GET,  .handler = exit_handler        };
     httpd_uri_t captive_uri = { .uri = "/generate_204", .method = HTTP_GET, .handler = captive_redirect_handler };
-    
+    httpd_uri_t favicon_uri = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler };
+
+    httpd_register_uri_handler(g_server, &favicon_uri);
     httpd_register_uri_handler(g_server, &captive_uri);
     httpd_register_uri_handler(g_server, &menu_uri);
     httpd_register_uri_handler(g_server, &portal_uri);
@@ -945,7 +957,7 @@ httpd_handle_t start_webserver(void)
     httpd_register_uri_handler(g_server, &restart_uri);
     httpd_register_uri_handler(g_server, &exit_uri);
 
-    ESP_LOGI(TAG, "HTTP server started — 11 routes registered");
+    ESP_LOGI(TAG, "HTTP server started — 13 routes registered");
     return g_server;
 }
 

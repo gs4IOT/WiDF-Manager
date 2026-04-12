@@ -50,18 +50,20 @@ extern httpd_handle_t    g_server;
 extern volatile bool     g_exit_requested;
 
 /* ── Handler declarations ────────────────────────────────────────────────── */
-esp_err_t menu_get_handler    (httpd_req_t *req);
-esp_err_t portal_get_handler  (httpd_req_t *req);
-esp_err_t wifi_refresh_handler(httpd_req_t *req);
-esp_err_t save_post_handler   (httpd_req_t *req);
-esp_err_t info_get_handler    (httpd_req_t *req);
-esp_err_t erase_handler       (httpd_req_t *req);
-esp_err_t ota_get_handler     (httpd_req_t *req);
-esp_err_t ota_upload_handler  (httpd_req_t *req);
-esp_err_t restart_handler     (httpd_req_t *req);
-esp_err_t exit_handler        (httpd_req_t *req);
-esp_err_t captive_redirect_handler(httpd_req_t *req);
-void build_scan_options(wifi_ap_record_t *records, uint16_t count);
+esp_err_t menu_get_handler              (httpd_req_t *req);
+esp_err_t portal_get_handler            (httpd_req_t *req);
+esp_err_t wifi_refresh_handler          (httpd_req_t *req);
+esp_err_t save_post_handler             (httpd_req_t *req);
+esp_err_t info_get_handler              (httpd_req_t *req);
+esp_err_t erase_handler                 (httpd_req_t *req);
+esp_err_t ota_get_handler               (httpd_req_t *req);
+esp_err_t ota_upload_handler            (httpd_req_t *req);
+esp_err_t restart_handler               (httpd_req_t *req);
+esp_err_t exit_handler                  (httpd_req_t *req);
+esp_err_t captive_redirect_handler      (httpd_req_t *req);
+esp_err_t favicon_handler               (httpd_req_t *req);
+
+void build_scan_options         (wifi_ap_record_t *records, uint16_t count);
 
 /* ── Web server ──────────────────────────────────────────────────────────── */
 /* Starts the HTTP server, registers all 9 routes, stores handle in g_server. */
