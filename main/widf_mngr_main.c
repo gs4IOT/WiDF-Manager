@@ -54,6 +54,9 @@
 #include "driver/gpio.h"
 #include "esp_ota_ops.h"
 #include "widf_mngr_handlers.h"
+#if CONFIG_PORTAL_DNS_ENABLED
+#include "widf_mngr_dns.h"
+#endif
 
 /* ── Kconfig — values set via idf.py menuconfig ──────────────────────────── */
 #define PORTAL_AP_SSID       CONFIG_PORTAL_AP_SSID
@@ -132,7 +135,8 @@ static void wait_for_long_press(void)
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data)
 {
-    if (event_base == WIFI_EVENT) {
+    if (event_base == WIFI_EVENT) {    g_exit_requested = false;
+
         switch (event_id) {
         	
             case WIFI_EVENT_AP_STACONNECTED: {
@@ -243,24 +247,6 @@ static void wifi_configure_ap(void)
  *   WPA3 cases are guarded by CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT so the code
  *   compiles cleanly on targets or IDF versions without WPA3 support.
  *   Must be called after esp_wifi_start(). */
-static const char *authmode_str(wifi_auth_mode_t mode)
-{
-    switch (mode) {
-        case WIFI_AUTH_OPEN:          return "Open";
-        case WIFI_AUTH_WEP:           return "WEP";
-        case WIFI_AUTH_WPA_PSK:       return "WPA";
-        case WIFI_AUTH_WPA2_PSK:      return "WPA2";
-        case WIFI_AUTH_WPA_WPA2_PSK:  return "WPA/2";
-        #ifdef CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT
-        case WIFI_AUTH_WPA3_PSK:      return "WPA3";
-        case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/3";
-        #endif
-        #ifdef CONFIG_ESP_WIFI_OWE_SUPPORT
-        case WIFI_AUTH_OWE:           return "OWE";
-        #endif
-        default:                       return "?";
-    }
-}
 
 static void wifi_scan(void)
 {
@@ -275,48 +261,7 @@ static void wifi_scan(void)
 
     wifi_ap_record_t records[WIFI_SCAN_MAX_AP];
     esp_wifi_scan_get_ap_records(&ap_count, records);
-
-    g_scan_options[0] = '\0';
-    for (int i = 0; i < ap_count; i++) {
-        bool hidden  = (strlen((char *)records[i].ssid) == 0);
-        int  bars    = (records[i].rssi >= -50) ? 4 :
-        (records[i].rssi >= -60) ? 3 :
-        (records[i].rssi >= -70) ? 2 : 1;
-        const char *enc     = authmode_str(records[i].authmode);
-        bool        is_open = (records[i].authmode == WIFI_AUTH_OPEN);
-
-        char opt[384];
-        if (hidden) {
-            snprintf(opt, sizeof(opt),
-                     "<div class='net hnet' onclick='selHidden(this)'>"
-                     "<div class='netinfo'>"
-                     "<span class='netname hidden'>Hidden (%02X:%02X:%02X:%02X:%02X:%02X)</span>"
-                     "<div class='netmeta'>"
-                     "<span class='dbm'>%d dBm</span>"
-                     "<span class='enc%s'>%s</span>"
-                     "</div></div>"
-                     "<div class='signal b%d'><i></i><i></i><i></i><i></i></div>"
-                     "</div>",
-                     records[i].bssid[0], records[i].bssid[1], records[i].bssid[2],
-                     records[i].bssid[3], records[i].bssid[4], records[i].bssid[5],
-                     records[i].rssi, is_open ? " open" : "", enc, bars);
-        } else {
-            snprintf(opt, sizeof(opt),
-                     "<div class='net' onclick='sel(this,\"%s\")'>"
-                     "<div class='netinfo'>"
-                     "<span class='netname'>%s</span>"
-                     "<div class='netmeta'>"
-                     "<span class='dbm'>%d dBm</span>"
-                     "<span class='enc%s'>%s</span>"
-                     "</div></div>"
-                     "<div class='signal b%d'><i></i><i></i><i></i><i></i></div>"
-                     "</div>",
-                     records[i].ssid, records[i].ssid,
-                     records[i].rssi, is_open ? " open" : "", enc, bars);
-        }
-        strncat(g_scan_options, opt,
-                sizeof(g_scan_options) - strlen(g_scan_options) - 1);
-    }
+    build_scan_options(records, ap_count);
     ESP_LOGI(TAG, "Scan complete — %d networks found", ap_count);
 }
 
@@ -358,6 +303,9 @@ static void portal_run(void)
 {
     g_exit_requested = false;
     wifi_scan();
+    #if CONFIG_PORTAL_DNS_ENABLED
+    dns_server_start();
+    #endif
     start_webserver();
 
     ESP_LOGI(TAG, "Portal open — timeout in %d s, or press Exit in browser",
@@ -383,6 +331,9 @@ static void portal_run(void)
         httpd_stop(g_server);
         g_server = NULL;
     }
+    #if CONFIG_PORTAL_DNS_ENABLED
+    dns_server_stop();
+    #endif
 
 #if CONFIG_PORTAL_REBOOT_ON_TIMEOUT
     if (!g_exit_requested) {

@@ -8,6 +8,7 @@
 
 #include "esp_http_server.h"
 #include "esp_err.h"
+#include "esp_wifi.h"
 
 /* ── Shared page CSS macro ───────────────────────────────────────────────── */
 /* Generates the HTML head + shared styles for all simple inline pages.
@@ -59,6 +60,8 @@ esp_err_t ota_get_handler     (httpd_req_t *req);
 esp_err_t ota_upload_handler  (httpd_req_t *req);
 esp_err_t restart_handler     (httpd_req_t *req);
 esp_err_t exit_handler        (httpd_req_t *req);
+esp_err_t captive_redirect_handler(httpd_req_t *req);
+void build_scan_options(wifi_ap_record_t *records, uint16_t count);
 
 /* ── Web server ──────────────────────────────────────────────────────────── */
 /* Starts the HTTP server, registers all 9 routes, stores handle in g_server. */

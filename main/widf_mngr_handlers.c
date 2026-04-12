@@ -115,6 +115,16 @@ static void build_status_chunk(char *buf, size_t len)
     }
 }
 
+/* GET /generate_204 — Android captive portal detection.
+ * Return 302 redirect to portal instead of 204, triggering the popup. */
+esp_err_t captive_redirect_handler(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
 /* Maps esp_chip_model_t to a human-readable string.
  *   Covers all ESP32 variants known in IDF v6.x.
  *   New variants added in IDF v5.1+: C6, C5, P4, C61.
@@ -141,6 +151,70 @@ static const char *chip_model_str(esp_chip_model_t model)
         case CHIP_ESP32C61: return "ESP32-C61";
         #endif
         default:            return "ESP32 (unknown)";
+    }
+}
+
+static const char *authmode_str(wifi_auth_mode_t mode)
+{
+    switch (mode) {
+        case WIFI_AUTH_OPEN:          return "Open";
+        case WIFI_AUTH_WEP:           return "WEP";
+        case WIFI_AUTH_WPA_PSK:       return "WPA";
+        case WIFI_AUTH_WPA2_PSK:      return "WPA2";
+        case WIFI_AUTH_WPA_WPA2_PSK:  return "WPA/2";
+        #ifdef CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT
+        case WIFI_AUTH_WPA3_PSK:      return "WPA3";
+        case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/3";
+        #endif
+        #ifdef CONFIG_ESP_WIFI_OWE_SUPPORT
+        case WIFI_AUTH_OWE:           return "OWE";
+        #endif
+        default:                       return "?";
+    }
+}
+
+void build_scan_options(wifi_ap_record_t *records, uint16_t count)
+{
+    g_scan_options[0] = '\0';
+    for (int i = 0; i < count; i++) {
+        bool hidden  = (strlen((char *)records[i].ssid) == 0);
+        int  bars    = (records[i].rssi >= -50) ? 4 :
+                       (records[i].rssi >= -60) ? 3 :
+                       (records[i].rssi >= -70) ? 2 : 1;
+        const char *enc     = authmode_str(records[i].authmode);
+        bool        is_open = (records[i].authmode == WIFI_AUTH_OPEN);
+
+        char opt[384];
+        if (hidden) {
+            snprintf(opt, sizeof(opt),
+                     "<div class='net hnet' onclick='selHidden(this)'>"
+                     "<div class='netinfo'>"
+                     "<span class='netname hidden'>Hidden (%02X:%02X:%02X:%02X:%02X:%02X)</span>"
+                     "<div class='netmeta'>"
+                     "<span class='dbm'>%d dBm</span>"
+                     "<span class='enc%s'>%s</span>"
+                     "</div></div>"
+                     "<div class='signal b%d'><i></i><i></i><i></i><i></i></div>"
+                     "</div>",
+                     records[i].bssid[0], records[i].bssid[1], records[i].bssid[2],
+                     records[i].bssid[3], records[i].bssid[4], records[i].bssid[5],
+                     records[i].rssi, is_open ? " open" : "", enc, bars);
+        } else {
+            snprintf(opt, sizeof(opt),
+                     "<div class='net' onclick='sel(this,\"%s\")'>"
+                     "<div class='netinfo'>"
+                     "<span class='netname'>%s</span>"
+                     "<div class='netmeta'>"
+                     "<span class='dbm'>%d dBm</span>"
+                     "<span class='enc%s'>%s</span>"
+                     "</div></div>"
+                     "<div class='signal b%d'><i></i><i></i><i></i><i></i></div>"
+                     "</div>",
+                     records[i].ssid, records[i].ssid,
+                     records[i].rssi, is_open ? " open" : "", enc, bars);
+        }
+        strncat(g_scan_options, opt,
+                sizeof(g_scan_options) - strlen(g_scan_options) - 1);
     }
 }
 
@@ -225,62 +299,7 @@ esp_err_t wifi_refresh_handler(httpd_req_t *req)
 
     wifi_ap_record_t records[20];
     esp_wifi_scan_get_ap_records(&ap_count, records);
-
-    g_scan_options[0] = '\0';
-    for (int i = 0; i < ap_count; i++) {
-        bool hidden  = (strlen((char *)records[i].ssid) == 0);
-        int  bars    = (records[i].rssi >= -50) ? 4 :
-        (records[i].rssi >= -60) ? 3 :
-        (records[i].rssi >= -70) ? 2 : 1;
-        bool is_open = (records[i].authmode == WIFI_AUTH_OPEN);
-        const char *enc;
-        switch (records[i].authmode) {
-            case WIFI_AUTH_OPEN:          enc = "Open";   break;
-            case WIFI_AUTH_WEP:           enc = "WEP";    break;
-            case WIFI_AUTH_WPA_PSK:       enc = "WPA";    break;
-            case WIFI_AUTH_WPA2_PSK:      enc = "WPA2";   break;
-            case WIFI_AUTH_WPA_WPA2_PSK:  enc = "WPA/2";  break;
-            #ifdef CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT
-            case WIFI_AUTH_WPA3_PSK:      enc = "WPA3";   break;
-            case WIFI_AUTH_WPA2_WPA3_PSK: enc = "WPA2/3"; break;
-            #endif
-            #ifdef CONFIG_ESP_WIFI_OWE_SUPPORT
-            case WIFI_AUTH_OWE:           enc = "OWE";    break;
-            #endif
-            default:                      enc = "?";      break;
-        }
-        char opt[384];
-        if (hidden) {
-            snprintf(opt, sizeof(opt),
-                     "<div class='net hnet' onclick='selHidden(this)'>"
-                     "<div class='netinfo'>"
-                     "<span class='netname hidden'>Hidden (%02X:%02X:%02X:%02X:%02X:%02X)</span>"
-                     "<div class='netmeta'>"
-                     "<span class='dbm'>%d dBm</span>"
-                     "<span class='enc%s'>%s</span>"
-                     "</div></div>"
-                     "<div class='signal b%d'><i></i><i></i><i></i><i></i></div>"
-                     "</div>",
-                     records[i].bssid[0], records[i].bssid[1], records[i].bssid[2],
-                     records[i].bssid[3], records[i].bssid[4], records[i].bssid[5],
-                     records[i].rssi, is_open ? " open" : "", enc, bars);
-        } else {
-            snprintf(opt, sizeof(opt),
-                     "<div class='net' onclick='sel(this,\"%s\")'>"
-                     "<div class='netinfo'>"
-                     "<span class='netname'>%s</span>"
-                     "<div class='netmeta'>"
-                     "<span class='dbm'>%d dBm</span>"
-                     "<span class='enc%s'>%s</span>"
-                     "</div></div>"
-                     "<div class='signal b%d'><i></i><i></i><i></i><i></i></div>"
-                     "</div>",
-                     records[i].ssid, records[i].ssid,
-                     records[i].rssi, is_open ? " open" : "", enc, bars);
-        }
-        strncat(g_scan_options, opt,
-                sizeof(g_scan_options) - strlen(g_scan_options) - 1);
-    }
+    build_scan_options(records, ap_count);
     ESP_LOGI(TAG, "Refresh scan complete — %d networks found", ap_count);
 
     httpd_resp_set_status(req, "302 Found");
@@ -516,8 +535,10 @@ esp_err_t info_get_handler(httpd_req_t *req)
              "<tr><td>/</td><td>Menu page</td></tr>"
              "<tr><td>/wifi</td><td>WiFi setup &#8212; scan and connect</td></tr>"
              "<tr><td>/wifi/refresh</td><td>Re-scan networks</td></tr>"
+             "<tr><td>/save</td><td>Save WiFi credentials and reboot</td></tr>"
              "<tr><td>/info</td><td>This page</td></tr>"
              "<tr><td>/ota</td><td>OTA firmware update</td></tr>"
+             "<tr><td>/ota/upload</td><td>OTA firmware upload (POST)</td></tr>"
              "<tr><td>/restart</td><td>Reboot the device</td></tr>"
              "<tr><td>/exit</td><td>Shut down portal</td></tr>"
              "<tr><td>/erase</td><td>Erase WiFi credentials and reboot</td></tr>"
@@ -910,7 +931,9 @@ httpd_handle_t start_webserver(void)
     httpd_uri_t ota_upload_uri = { .uri = "/ota/upload",   .method = HTTP_POST, .handler = ota_upload_handler };
     httpd_uri_t restart_uri = { .uri = "/restart",      .method = HTTP_GET,  .handler = restart_handler     };
     httpd_uri_t exit_uri    = { .uri = "/exit",         .method = HTTP_GET,  .handler = exit_handler        };
-
+    httpd_uri_t captive_uri = { .uri = "/generate_204", .method = HTTP_GET, .handler = captive_redirect_handler };
+    
+    httpd_register_uri_handler(g_server, &captive_uri);
     httpd_register_uri_handler(g_server, &menu_uri);
     httpd_register_uri_handler(g_server, &portal_uri);
     httpd_register_uri_handler(g_server, &refresh_uri);
@@ -922,7 +945,7 @@ httpd_handle_t start_webserver(void)
     httpd_register_uri_handler(g_server, &restart_uri);
     httpd_register_uri_handler(g_server, &exit_uri);
 
-    ESP_LOGI(TAG, "HTTP server started — 10 routes registered");
+    ESP_LOGI(TAG, "HTTP server started — 11 routes registered");
     return g_server;
 }
 

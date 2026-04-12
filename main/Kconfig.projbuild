@@ -74,5 +74,15 @@ menu "WIDF Manager Configuration"
             Useful for headless or unattended deployments where no
             button is accessible. Pair with PORTAL_KEEP_AP_ACTIVE=n
             for a minimal-footprint headless configuration.
+    
+    
+    config PORTAL_DNS_ENABLED
+        bool "Enable captive portal DNS server"
+        default n
+        help
+            Starts a DNS server on port 53 that redirects all queries to
+            192.168.4.1. Triggers automatic captive portal popups on some
+            devices. Modern Android uses HTTPS for detection and will not
+            show a popup regardless. Disable to save flash and RAM.
 
 endmenu
