@@ -127,22 +127,29 @@ Macro that initialises a `widf_mngr_config_t` with all Kconfig defaults. Use thi
 ### File structure
 
 ```
-widf_mngr/
+WiDF-Manager/
+├── components/
+│   └── widf_mngr/
+│       ├── examples/
+│       │   ├── basic/               # Minimal integration example
+│       │   └── custom_config/       # Runtime config struct example
+│       ├── include/
+│       │   └── widf_mngr.h          # Public API header
+│       ├── widf_mngr_main.c         # System core — NVS, WiFi, scan, widf_mngr_run()
+│       ├── widf_mngr_handlers.c     # All HTTP handlers and start_webserver()
+│       ├── widf_mngr_handlers.h     # Handler declarations, PAGE_HEAD macro, shared externs
+│       ├── widf_mngr_dns.c          # Optional UDP DNS server (Kconfig gated)
+│       ├── widf_mngr_dns.h          # dns_server_start() / dns_server_stop()
+│       ├── Top_portal.html          # WiFi setup page — top half (embedded into firmware)
+│       ├── Bottom_portal.html       # WiFi setup page — bottom half + JavaScript
+│       ├── CMakeLists.txt           # Component registration, source files, embedded HTML
+│       ├── idf_component.yml        # IDF Component Manager manifest
+│       └── Kconfig                  # menuconfig options (build-time defaults)
 ├── main/
-│   ├── widf_mngr_main.c       # System core — NVS, WiFi, scan, widf_mngr_run()
-│   ├── widf_mngr_handlers.c   # All HTTP handlers and start_webserver()
-│   ├── widf_mngr_handlers.h   # Handler declarations, PAGE_HEAD macro, shared externs
-│   ├── widf_mngr_dns.c        # Optional UDP DNS server (Kconfig gated)
-│   ├── widf_mngr_dns.h        # dns_server_start() / dns_server_stop()
-│   ├── widf_mngr.h            # Public API header
-│   ├── Top_portal.html        # WiFi setup page — top half (embedded into firmware)
-│   ├── Bottom_portal.html     # WiFi setup page — bottom half + JavaScript
-│   ├── CMakeLists.txt         # Component registration, source files, embedded HTML
-│   ├── idf_component.yml      # IDF Component Manager manifest
-│   └── Kconfig.projbuild      # menuconfig options (build-time defaults)
-├── CMakeLists.txt             # Project-level build config
-├── partitions.csv             # 4MB OTA partition table
-├── dependencies.lock          # Locked component versions
+│   └── main.c                       # Entry point — calls widf_mngr_run()
+├── CMakeLists.txt                   # Project-level build config
+├── partitions.csv                   # 4MB OTA partition table
+├── dependencies.lock                # Locked component versions
 └── README.md
 ```
 
@@ -313,7 +320,8 @@ Temperature sensor display is conditionally compiled (`CONFIG_SOC_TEMP_SENSOR_SU
 
 | Version | Notes |
 |---------|-------|
-| v0.9.1 | mDNS (`widf.local`), favicon handler (204), /generate_204 captive redirect, route table complete (13 routes), buffer audit |
+| v1.0.0 | Component structure (`components/widf_mngr/`), public header in `include/`, examples: `basic` and `custom_config` |
+| v0.9.1 | mDNS (`widf.local`), favicon handler (204), `/generate_204` captive redirect, route table complete (13 routes), buffer audit |
 | v0.9.0 | Public API: `widf_mngr_run()`, `widf_mngr_config_t`, `sta_access` mode, runtime config struct, `widf_mngr_get_sta_ip()` |
 | v0.8.5 | DNS server (Kconfig gated), captive portal redirect, scan deduplication, route table fix |
 | v0.8.0 | OTA upload with progress bar, version comparison, A/B partition swap, rollback protection |
