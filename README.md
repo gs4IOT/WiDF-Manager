@@ -1,6 +1,6 @@
 # WIDF Manager
 
-A native ESP-IDF WiFi provisioning library for the **ESP32 family**. Developed and tested on the M5Stamp C3 (ESP32-C3). No Arduino framework, no third-party WiFi libraries — built entirely on ESP-IDF components.
+A native ESP-IDF WiFi provisioning library for the **ESP32 family**. Developed and tested on the M5Stamp C3 (ESP32-C3). No Arduino framework, no third-party WiFi libraries — built entirely on ESP-IDF components. 
 
 Designed as a reusable subsystem: call `widf_mngr_run()` from your `app_main()` and the library handles everything — WiFi init, captive portal, credential storage, STA connection, OTA, mDNS, and portal lifecycle.
 
