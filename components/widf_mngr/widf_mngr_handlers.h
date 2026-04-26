@@ -11,9 +11,6 @@
 #include "esp_wifi.h"
 
 /* ── Shared page CSS macro ───────────────────────────────────────────────── */
-/* Generates the HTML head + shared styles for all simple inline pages.
- *   Use %% inside snprintf strings that follow this macro (escapes the % sign).
- *   The /info and /wifi pages use their own inline CSS for layout flexibility. */
 #define PAGE_HEAD(title) \
 "<!DOCTYPE html><html><head>" \
 "<meta charset='utf-8'>" \
@@ -38,16 +35,19 @@
 "</style></head><body>"
 
 /* ── Shared scan options buffer ──────────────────────────────────────────── */
-/* Populated by wifi_scan() in widf_mngr_main.c, consumed by portal_get_handler. */
 extern char g_scan_options[6144];
 
 /* ── Shared server handle and exit flag ──────────────────────────────────── */
-/* g_server      — set by start_webserver(), used by exit_handler to stop it.
- *   g_exit_requested — set by exit_handler after sending response; polled by
- *                      portal_run() in main to break out of the portal loop.
- *   Both are declared in widf_mngr_handlers.c. */
 extern httpd_handle_t    g_server;
 extern volatile bool     g_exit_requested;
+
+/* ── Reconnect request flag and credentials ──────────────────────────────── */
+/* Set by save_post_handler() when on_save_mode == WIDF_ON_SAVE_RECONNECT.
+ * Polled by portal_run() alongside g_exit_requested.
+ * Cleared by widf_mngr_main.c after reconnect attempt begins. */
+extern volatile bool     g_reconnect_requested;
+extern char              g_reconnect_ssid[33];
+extern char              g_reconnect_pass[65];
 
 /* ── Handler declarations ────────────────────────────────────────────────── */
 esp_err_t menu_get_handler              (httpd_req_t *req);
@@ -65,8 +65,11 @@ esp_err_t favicon_handler               (httpd_req_t *req);
 
 void build_scan_options         (wifi_ap_record_t *records, uint16_t count);
 
+/* Called by save_post_handler() to notify the host of saved credentials.
+ * Defined in widf_mngr_main.c — bridges the cross-file boundary. */
+void widf_mngr_notify_saved(const char *ssid);
+
 /* ── Web server ──────────────────────────────────────────────────────────── */
-/* Starts the HTTP server, registers all 9 routes, stores handle in g_server. */
 httpd_handle_t start_webserver(void);
 
 #endif /* WIDF_MNGR_HANDLERS_H */

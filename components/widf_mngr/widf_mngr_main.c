@@ -1,5 +1,5 @@
 /*  widf_mngr_main.c — WIDF Manager system core
- *    WIDF Manager v0.9.0 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.1.2 — ESP-IDF native, ESP32 family
  *
  *    Developed and tested on M5Stamp C3 (ESP32-C3). Compatible with any
  *    ESP32 variant — set reopen_gpio in widf_mngr_config_t to match your board.
@@ -51,6 +51,12 @@ static const char *TAG = "widf_mngr";
 /* Active config — set at start of widf_mngr_run(), used by callbacks */
 static const widf_mngr_config_t *s_cfg = NULL;
 
+/* Config accessor — used by save_post_handler() across the file boundary */
+const widf_mngr_config_t *widf_mngr_get_config(void)
+{
+    return s_cfg;
+}
+
 /* Scan options buffer — extern'd in widf_mngr_handlers.h */
 char g_scan_options[6144] = {0};
 
@@ -63,6 +69,27 @@ static bool s_sta_connecting = false;
 
 /* STA IP — updated on connect, returned by widf_mngr_get_sta_ip() */
 static char s_sta_ip[16] = {0};
+
+/* Current connecting SSID — set by try_sta_connect(), used by event handler
+ * and widf_fire_event() to carry SSID into IP_EVENT and disconnect events */
+static char s_connecting_ssid[33] = {0};
+
+/* ── Event helper ────────────────────────────────────────────────────────── */
+static void widf_fire_event(const widf_event_data_t *evt)
+{
+    if (s_cfg && s_cfg->on_event) {
+        s_cfg->on_event(evt);
+    }
+}
+
+/* Called by save_post_handler() in widf_mngr_handlers.c after NVS write.
+ * Bridges the cross-file boundary without exposing widf_fire_event(). */
+void widf_mngr_notify_saved(const char *ssid)
+{
+    widf_event_data_t evt = { .event = WIDF_EVENT_CREDENTIALS_SAVED };
+    strncpy(evt.data.saved.ssid, ssid, sizeof(evt.data.saved.ssid) - 1);
+    widf_fire_event(&evt);
+}
 
 /* ── Public API helpers ──────────────────────────────────────────────────── */
 const char *widf_mngr_get_sta_ip(void)
@@ -149,8 +176,20 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                         esp_wifi_connect();
                     } else {
                         ESP_LOGE(TAG, "All %d attempts failed", max_retry);
+                        widf_event_data_t evt = { .event = WIDF_EVENT_STA_FAILED };
+                        strncpy(evt.data.failed.ssid, s_connecting_ssid,
+                                sizeof(evt.data.failed.ssid) - 1);
+                        evt.data.failed.retries = s_retry_num;
+                        widf_fire_event(&evt);
                         xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
                     }
+                } else {
+                    /* Mid-session drop — not a connect attempt */
+                    ESP_LOGW(TAG, "STA disconnected mid-session");
+                    widf_event_data_t evt = { .event = WIDF_EVENT_STA_DISCONNECTED };
+                    strncpy(evt.data.disconnected.ssid, s_connecting_ssid,
+                            sizeof(evt.data.disconnected.ssid) - 1);
+                    widf_fire_event(&evt);
                 }
                 break;
 
@@ -163,6 +202,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         snprintf(s_sta_ip, sizeof(s_sta_ip), IPSTR, IP2STR(&e->ip_info.ip));
         ESP_LOGI(TAG, "Connected! IP: %s", s_sta_ip);
         s_retry_num = 0;
+        widf_event_data_t evt = { .event = WIDF_EVENT_STA_CONNECTED };
+        strncpy(evt.data.connected.ip,   s_sta_ip,           sizeof(evt.data.connected.ip)   - 1);
+        strncpy(evt.data.connected.ssid, s_connecting_ssid,  sizeof(evt.data.connected.ssid) - 1);
+        widf_fire_event(&evt);
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
@@ -254,9 +297,18 @@ static bool try_sta_connect(const char *ssid, const char *password)
     strncpy((char *)sta_cfg.sta.password, password, sizeof(sta_cfg.sta.password) - 1);
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_cfg));
 
+    /* Track SSID for event data — used by handler and widf_fire_event() */
+    strncpy(s_connecting_ssid, ssid, sizeof(s_connecting_ssid) - 1);
+
     s_wifi_event_group = xEventGroupCreate();
     s_retry_num        = 0;
     s_sta_connecting   = true;
+
+    /* Fire TRYING event once per network before retries begin */
+    widf_event_data_t evt = { .event = WIDF_EVENT_STA_TRYING };
+    strncpy(evt.data.trying.ssid, ssid, sizeof(evt.data.trying.ssid) - 1);
+    evt.data.trying.retries = s_cfg ? s_cfg->max_sta_retries : 3;
+    widf_fire_event(&evt);
 
     esp_wifi_connect();
 
@@ -270,15 +322,42 @@ static bool try_sta_connect(const char *ssid, const char *password)
     return (bits & WIFI_CONNECTED_BIT) != 0;
 }
 
+/* Applies on_connect_mode after a successful STA connection.
+ * Called from both the initial boot connect and the reconnect path. */
+static void handle_connect_result(bool connected)
+{
+    if (!connected) return;
+
+    mdns_start();
+
+    switch (s_cfg->on_connect_mode) {
+        case WIDF_ON_CONNECT_AP_DOWN:
+            esp_wifi_set_mode(WIFI_MODE_STA);
+            ESP_LOGI(TAG, "on_connect: AP down");
+            break;
+        case WIDF_ON_CONNECT_PORTAL_STA:
+            esp_wifi_set_mode(WIFI_MODE_STA);
+            ESP_LOGI(TAG, "on_connect: portal will run on STA IP %s", s_sta_ip);
+            break;
+        case WIDF_ON_CONNECT_EVENT_ONLY:
+            ESP_LOGI(TAG, "on_connect: event only — host decides");
+            break;
+    }
+}
+
 /* ── Portal run ──────────────────────────────────────────────────────────── */
 static void portal_run(void)
 {
-    g_exit_requested = false;
+    g_exit_requested    = false;
+    g_reconnect_requested = false;
     wifi_scan();
-#if CONFIG_PORTAL_DNS_ENABLED
+    #if CONFIG_PORTAL_DNS_ENABLED
     dns_server_start();
-#endif
+    #endif
     start_webserver();
+
+    widf_event_data_t evt = { .event = WIDF_EVENT_PORTAL_OPENED };
+    widf_fire_event(&evt);
 
     ESP_LOGI(TAG, "Portal open — timeout in %lu s, or press Exit in browser",
              (unsigned long)s_cfg->portal_timeout_s);
@@ -291,11 +370,15 @@ static void portal_run(void)
             ESP_LOGW(TAG, "Exit requested via browser");
             break;
         }
+        if (g_reconnect_requested) {
+            ESP_LOGI(TAG, "Reconnect requested — closing portal");
+            break;
+        }
         vTaskDelay(pdMS_TO_TICKS(500));
         elapsed_ms += 500;
     }
 
-    if (!g_exit_requested) {
+    if (!g_exit_requested && !g_reconnect_requested) {
         ESP_LOGW(TAG, "Portal timeout reached");
     }
 
@@ -303,9 +386,13 @@ static void portal_run(void)
         httpd_stop(g_server);
         g_server = NULL;
     }
-#if CONFIG_PORTAL_DNS_ENABLED
+
+    widf_event_data_t close_evt = { .event = WIDF_EVENT_PORTAL_CLOSED };
+    widf_fire_event(&close_evt);
+
+    #if CONFIG_PORTAL_DNS_ENABLED
     dns_server_stop();
-#endif
+    #endif
 }
 
 /* ── Public API ──────────────────────────────────────────────────────────── */
@@ -344,40 +431,55 @@ esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
         connected = try_sta_connect(ssid, password);
         if (connected) {
             ESP_LOGI(TAG, "Connected to \"%s\"", ssid);
-            mdns_start();
-            if (!s_cfg->sta_access) {
-                /* sta_access off: shut AP down after STA connects */
-                esp_wifi_set_mode(WIFI_MODE_STA);
-                ESP_LOGI(TAG, "sta_access disabled — AP stopped");
-            }
+            handle_connect_result(true);
         } else {
-            ESP_LOGW(TAG, "Could not connect to \"%s\" — opening portal", ssid);
+            ESP_LOGW(TAG, "Could not connect to \"%s\"", ssid);
         }
     } else {
-        ESP_LOGI(TAG, "No saved credentials — starting portal");
+        ESP_LOGI(TAG, "No saved credentials");
+    }
+
+    /* Apply fallback_mode if not connected */
+    if (!connected) {
+        if (s_cfg->fallback_mode == WIDF_FALLBACK_EVENT_ONLY) {
+            ESP_LOGW(TAG, "fallback_mode: EVENT_ONLY — returning to host");
+            return ESP_OK;
+        }
+        ESP_LOGI(TAG, "fallback_mode: AP_PORTAL — opening portal");
     }
 
     /* Main loop */
     while (true) {
-        /* sta_access mode: portal always runs, AP only up when not connected */
-        if (s_cfg->sta_access && connected) {
-            /* Keep portal running on STA IP, no AP needed */
-            ESP_LOGI(TAG, "sta_access: portal running on STA IP %s", s_sta_ip);
+        if (s_cfg->on_connect_mode == WIDF_ON_CONNECT_PORTAL_STA && connected) {
+            ESP_LOGI(TAG, "Portal running on STA IP %s", s_sta_ip);
         }
 
         portal_run();
 
-        /* After portal closes */
+        /* Handle reconnect request from save_post_handler() */
+        if (g_reconnect_requested) {
+            g_reconnect_requested = false;
+            ESP_LOGI(TAG, "Reconnecting to \"%s\"", g_reconnect_ssid);
+            connected = try_sta_connect(g_reconnect_ssid, g_reconnect_pass);
+            if (connected) {
+                ESP_LOGI(TAG, "Reconnected to \"%s\"", g_reconnect_ssid);
+                handle_connect_result(true);
+            } else {
+                ESP_LOGW(TAG, "Reconnect failed — reopening portal");
+            }
+            memset(g_reconnect_ssid, 0, sizeof(g_reconnect_ssid));
+            memset(g_reconnect_pass, 0, sizeof(g_reconnect_pass));
+            continue;
+        }
+
         wifi_ap_record_t ap_info;
         connected = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
 
         if (s_cfg->reopen_gpio <= 0) {
-            /* Headless mode — reboot on timeout */
             ESP_LOGW(TAG, "reopen_gpio not set — rebooting");
             esp_restart();
         }
 
-        /* GPIO mode — wait for long press */
         if (connected) {
             ESP_LOGI(TAG, "Still connected to \"%s\" — waiting for long press on GPIO%d",
                      (char *)ap_info.ssid, s_cfg->reopen_gpio);
@@ -388,7 +490,6 @@ esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
 
         wait_for_long_press(s_cfg->reopen_gpio, s_cfg->long_press_ms);
 
-        /* Reconnect attempt before reopening portal */
         memset(ssid,     0, sizeof(ssid));
         memset(password, 0, sizeof(password));
         if (portal_nvs_load_creds(ssid, password)) {
@@ -396,9 +497,9 @@ esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
             connected = try_sta_connect(ssid, password);
             if (connected) {
                 ESP_LOGI(TAG, "Reconnected to \"%s\"", ssid);
-                mdns_start();
+                handle_connect_result(true);
             } else {
-                ESP_LOGW(TAG, "Reconnect failed — opening portal for new credentials");
+                ESP_LOGW(TAG, "Reconnect failed — opening portal");
             }
         } else {
             ESP_LOGI(TAG, "Long press: no saved credentials — opening portal");

@@ -1,5 +1,5 @@
 /*  widf_mngr_handlers.c — HTTP handlers for WIDF Manager
- *    WIDF Manager v0.7.5 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.1.2 — ESP-IDF native, ESP32 family
  *
  *    All httpd URI handler functions and start_webserver() live here.
  *    System logic (WiFi, NVS, scan, app_main) stays in widf_mngr_main.c.
@@ -43,6 +43,7 @@
 #include "driver/temperature_sensor.h"
 #endif
 #include "widf_mngr_handlers.h"
+#include "widf_mngr.h"
 
 static const char *TAG = "widf_handlers";
 
@@ -51,6 +52,9 @@ static const char *TAG = "widf_handlers";
  *   g_exit_requested is polled by portal_run() in widf_mngr_main.c. */
 httpd_handle_t g_server         = NULL;
 volatile bool  g_exit_requested = false;
+volatile bool  g_reconnect_requested = false;
+char           g_reconnect_ssid[33]  = {0};
+char           g_reconnect_pass[65]  = {0};
 
 /* ── Kconfig alias ───────────────────────────────────────────────────────── */
 #define PORTAL_AP_SSID  CONFIG_PORTAL_AP_SSID
@@ -315,9 +319,10 @@ esp_err_t wifi_refresh_handler(httpd_req_t *req)
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
-
 /* POST /save — receive URL-encoded form body, decode SSID + password,
- *   save to NVS, send confirmation page, then reboot after 1 s. */
+ *   save to NVS, then behave according to on_save_mode:
+ *     WIDF_ON_SAVE_RECONNECT  — set reconnect flag, portal_run() handles it
+ *     WIDF_ON_SAVE_EVENT_ONLY — fire event only, host decides next step     */
 esp_err_t save_post_handler(httpd_req_t *req)
 {
     char buf[256] = {0};
@@ -337,17 +342,41 @@ esp_err_t save_post_handler(httpd_req_t *req)
 
     ESP_LOGI(TAG, "Saving credentials for SSID: %s", ssid);
     portal_nvs_save_creds(ssid, password);
+    widf_mngr_notify_saved(ssid);
 
-    const char *resp =
-    PAGE_HEAD("Saved!")
-    "<div class='card'>"
-    "<h2 style='color:#2d6a4f'>&#10003; Saved!</h2>"
-    "<p>Credentials saved.<br>The device will now restart and connect.</p>"
-    "</div></body></html>";
-    httpd_resp_set_type(req, "text/html; charset=utf-8");
-    httpd_resp_sendstr(req, resp);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    esp_restart();
+    /* Retrieve on_save_mode via extern config accessor */
+    extern const widf_mngr_config_t *widf_mngr_get_config(void);
+    const widf_mngr_config_t *cfg = widf_mngr_get_config();
+    widf_on_save_mode_t on_save = cfg ? cfg->on_save_mode : WIDF_ON_SAVE_RECONNECT;
+
+    if (on_save == WIDF_ON_SAVE_RECONNECT) {
+        /* Signal portal_run() to close portal and attempt reconnect */
+        strncpy(g_reconnect_ssid, ssid,     sizeof(g_reconnect_ssid) - 1);
+        strncpy(g_reconnect_pass, password, sizeof(g_reconnect_pass) - 1);
+        g_reconnect_requested = true;
+
+        const char *resp =
+        PAGE_HEAD("Connecting...")
+        "<div class='card'>"
+        "<h2>Connecting...</h2>"
+        "<p>Credentials saved.<br>"
+        "The device is now attempting to connect.</p>"
+        "</div></body></html>";
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_sendstr(req, resp);
+
+    } else {
+        /* WIDF_ON_SAVE_EVENT_ONLY — event already fired, just confirm */
+        const char *resp =
+        PAGE_HEAD("Saved!")
+        "<div class='card'>"
+        "<h2 style='color:#2d6a4f'>&#10003; Saved!</h2>"
+        "<p>Credentials saved.</p>"
+        "</div></body></html>";
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_sendstr(req, resp);
+    }
+
     return ESP_OK;
 }
 
