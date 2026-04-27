@@ -398,7 +398,6 @@ static void portal_run(void)
 /* ── Public API ──────────────────────────────────────────────────────────── */
 esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
 {
-    /* Use default config if NULL passed */
     widf_mngr_config_t default_cfg = WIDF_MNGR_DEFAULT_CONFIG();
     s_cfg = config ? config : &default_cfg;
 
@@ -507,13 +506,6 @@ esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
     }
 
     return ESP_OK;
-}
-
-/* ── Entry point ─────────────────────────────────────────────────────────── */
-void app_main(void)
-{
-    widf_mngr_config_t cfg = WIDF_MNGR_DEFAULT_CONFIG();
-    widf_mngr_run(&cfg);
 }
 
 /* ── End of widf_mngr_main.c ─────────────────────────────────────────────── */

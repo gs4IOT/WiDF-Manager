@@ -1,82 +1,9 @@
-Executing action: all (aliases: build)
-Running ninja in directory /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build
-Executing "ninja all"...
-[1/4] cd /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build && /home/stephan/.espressif/tools/python/v6.0/venv/bin/python /home/stephan/.espressif/v6.0/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/partition_table/partition-table.bin /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/widf_mngr.bin
-widf_mngr.bin binary size 0xe4540 bytes. Smallest app partition is 0x1c0000 bytes. 0xdbac0 bytes (49%) free.
-[2/4] Performing build step for 'bootloader'
-[1/1] cd /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/bootloader && /home/stephan/.espressif/tools/python/v6.0/venv/bin/python /home/stephan/.espressif/v6.0/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x0 /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/bootloader/bootloader.bin
-Bootloader binary size 0x5250 bytes. 0x2db0 bytes (36%) free.
-[3/4] No install step for 'bootloader'
-[4/4] Completed 'bootloader'
-Executing action: flash
-Serial port /dev/ttyACM0:
-Connecting....
-Detecting chip type... ESP32-C3
-Running ninja in directory /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build
-Executing "ninja flash"...
-[1/5] cd /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build && /home/stephan/.espressif/tools/python/v6.0/venv/bin/python /home/stephan/.espressif/v6.0/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/partition_table/partition-table.bin /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/widf_mngr.bin
-widf_mngr.bin binary size 0xe4540 bytes. Smallest app partition is 0x1c0000 bytes. 0xdbac0 bytes (49%) free.
-[2/5] Performing build step for 'bootloader'
-[1/1] cd /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/bootloader && /home/stephan/.espressif/tools/python/v6.0/venv/bin/python /home/stephan/.espressif/v6.0/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x0 /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/bootloader/bootloader.bin
-Bootloader binary size 0x5250 bytes. 0x2db0 bytes (36%) free.
-[3/5] No install step for 'bootloader'
-[4/5] Completed 'bootloader'
-[4/5] Running utility command for flash
-esptool --chip esp32c3 -p /dev/ttyACM0 -b 460800 --before=default-reset --after=hard-reset write-flash --flash-mode dio --flash-freq 80m --flash-size 4MB 0x0 bootloader/bootloader.bin 0x8000 partition_table/partition-table.bin 0x10000 ota_data_initial.bin 0x20000 widf_mngr.bin
-esptool v5.3.dev2
-Serial port /dev/ttyACM0:
-Connecting....
-[1A[2K[1A[2KConnected to ESP32-C3 on /dev/ttyACM0:
-Chip type:          ESP32-C3 (QFN32) (revision v0.3)
-Features:           Wi-Fi, BT 5 (LE), Single Core, 160MHz, Embedded Flash 4MB (XMC)
-Crystal frequency:  40MHz
-MAC:                7c:df:a1:a3:48:18
-
-Uploading stub flasher...
-Running stub flasher...
-[1A[2K[1A[2KStub flasher running.
-Changing baud rate to 460800...
-Changed.
-
-Configuring flash size...
-
-Writing 'bootloader/bootloader.bin' at 0x00000000...
-SHA digest in image updated.
-Flash will be erased from 0x00000000 to 0x00005fff...
-Compressed 21072 bytes to 13349...
-[KWriting at 0x00000000 [                              ]   0.0% 0/13349 bytes... [KWriting at 0x00005250 [==============================] 100.0% 13349/13349 bytes... 
-[1A[2K[1A[2KWrote 21072 bytes (13349 compressed) at 0x00000000 in 0.7 seconds (243.8 kbit/s).
-Verifying written data...
-[1A[2KHash of data verified.
-
-Writing 'partition_table/partition-table.bin' at 0x00008000...
-Flash will be erased from 0x00008000 to 0x00008fff...
-Compressed 3072 bytes to 126...
-[KWriting at 0x00008000 [                              ]   0.0% 0/126 bytes... [KWriting at 0x00008c00 [==============================] 100.0% 126/126 bytes... 
-[1A[2K[1A[2KWrote 3072 bytes (126 compressed) at 0x00008000 in 0.1 seconds (431.9 kbit/s).
-Verifying written data...
-[1A[2KHash of data verified.
-
-Writing 'ota_data_initial.bin' at 0x00010000...
-Flash will be erased from 0x00010000 to 0x00011fff...
-Compressed 8192 bytes to 31...
-[KWriting at 0x00010000 [                              ]   0.0% 0/31 bytes... [KWriting at 0x00012000 [==============================] 100.0% 31/31 bytes... 
-[1A[2K[1A[2KWrote 8192 bytes (31 compressed) at 0x00010000 in 0.1 seconds (591.7 kbit/s).
-Verifying written data...
-[1A[2KHash of data verified.
-
-Writing 'widf_mngr.bin' at 0x00020000...
-Flash will be erased from 0x00020000 to 0x00104fff...
-Compressed 935232 bytes to 546885...
-[KWriting at 0x00020000 [                              ]   0.0% 0/546885 bytes... [KWriting at 0x0002d86b [                              ]   3.0% 16384/546885 bytes... [KWriting at 0x00038c61 [>                             ]   6.0% 32768/546885 bytes... [KWriting at 0x0003f758 [=>                            ]   9.0% 49152/546885 bytes... [KWriting at 0x00049163 [==>                           ]  12.0% 65536/546885 bytes... [KWriting at 0x0004f80d [===>                          ]  15.0% 81920/546885 bytes... [KWriting at 0x00056577 [====>                         ]  18.0% 98304/546885 bytes... [KWriting at 0x0005d6fa [=====>                        ]  21.0% 114688/546885 bytes... [KWriting at 0x0006456f [======>                       ]  24.0% 131072/546885 bytes... [KWriting at 0x0006aead [=======>                      ]  27.0% 147456/546885 bytes... [KWriting at 0x000724c5 [=======>                      ]  30.0% 163840/546885 bytes... [KWriting at 0x00079145 [========>                     ]  33.0% 180224/546885 bytes... [KWriting at 0x0007fdb3 [=========>                    ]  36.0% 196608/546885 bytes... [KWriting at 0x00086cd9 [==========>                   ]  38.9% 212992/546885 bytes... [KWriting at 0x0008da86 [===========>                  ]  41.9% 229376/546885 bytes... [KWriting at 0x000940c6 [============>                 ]  44.9% 245760/546885 bytes... [KWriting at 0x00099c13 [=============>                ]  47.9% 262144/546885 bytes... [KWriting at 0x0009f9dc [==============>               ]  50.9% 278528/546885 bytes... [KWriting at 0x000a5244 [===============>              ]  53.9% 294912/546885 bytes... [KWriting at 0x000ab031 [================>             ]  56.9% 311296/546885 bytes... [KWriting at 0x000b0f84 [================>             ]  59.9% 327680/546885 bytes... [KWriting at 0x000b6c46 [=================>            ]  62.9% 344064/546885 bytes... [KWriting at 0x000bce5d [==================>           ]  65.9% 360448/546885 bytes... [KWriting at 0x000c3226 [===================>          ]  68.9% 376832/546885 bytes... [KWriting at 0x000c94f4 [====================>         ]  71.9% 393216/546885 bytes... [KWriting at 0x000cf79c [=====================>        ]  74.9% 409600/546885 bytes... [KWriting at 0x000d5870 [======================>       ]  77.9% 425984/546885 bytes... [KWriting at 0x000dbc89 [=======================>      ]  80.9% 442368/546885 bytes... [KWriting at 0x000e1c90 [========================>     ]  83.9% 458752/546885 bytes... [KWriting at 0x000e7f9e [=========================>    ]  86.9% 475136/546885 bytes... [KWriting at 0x000ef26d [=========================>    ]  89.9% 491520/546885 bytes... [KWriting at 0x000f4b9f [==========================>   ]  92.9% 507904/546885 bytes... [KWriting at 0x000fba59 [===========================>  ]  95.9% 524288/546885 bytes... [KWriting at 0x00101a08 [============================> ]  98.9% 540672/546885 bytes... [KWriting at 0x00104540 [==============================] 100.0% 546885/546885 bytes... 
-[1A[2K[1A[2KWrote 935232 bytes (546885 compressed) at 0x00020000 in 16.5 seconds (453.7 kbit/s).
-Verifying written data...
-[1A[2KHash of data verified.
-
-Hard resetting via RTS pin...
-[0;33m--- esp-idf-monitor 1.9.0 on /dev/ttyACM0 115200[0m
-[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
 Executing action: monitor
+Serial port /dev/ttyACM0:
+Connecting....
+Detecting chip type...[0;33m--- esp-idf-monitor 1.9.0 on /dev/ttyACM0 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+ ESP32-C3
 Running idf_monitor in directory /home/stephan/esp/esp-projects/WiDF-Manager-1.1v
 Executing "/home/stephan/.espressif/tools/python/v6.0/venv/bin/python /home/stephan/.espressif/v6.0/esp-idf/tools/idf_monitor.py -p /dev/ttyACM0 -b 115200 --toolchain-prefix riscv32-esp-elf- --target esp32c3 --revision 3 --decode-panic backtrace /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/widf_mngr.elf /home/stephan/esp/esp-projects/WiDF-Manager-1.1v/build/bootloader/bootloader.elf -m '/home/stephan/.espressif/tools/python/v6.0/venv/bin/python' '/home/stephan/.espressif/v6.0/esp-idf/tools/idf.py'"...
 ESP-ROM:esp32c3-api1-20210207
@@ -92,7 +19,7 @@ load:0x403ce710,len:0x2fbc
 entry 0x403cbf1a
 [0m--- 0x403cbf1a: [0;33mcall_start_cpu0[0m[0m at [0;32m/home/stephan/.espressif/v6.0/esp-idf/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m27[0m
 [0;32mI (30) boot: ESP-IDF v6.0 2nd stage bootloader[0m
-[0;32mI (30) boot: compile time Apr 26 2026 17:21:17[0m
+[0;32mI (30) boot: compile time Apr 26 2026 18:42:56[0m
 [0;32mI (30) boot: chip revision: v0.3[0m
 [0;32mI (30) boot: efuse block revision: v1.1[0m
 [0;32mI (34) boot.esp32c3: SPI Speed      : 80MHz[0m
@@ -107,78 +34,89 @@ entry 0x403cbf1a
 [0;32mI (78) boot:  3 ota_0            OTA app          00 10 00020000 001c0000[0m
 [0;32mI (85) boot:  4 ota_1            OTA app          00 11 001e0000 001c0000[0m
 [0;32mI (91) boot: End of partition table[0m
-[0;32mI (94) boot: No factory image, trying OTA 0[0m
-[0;32mI (98) esp_image: segment 0: paddr=00020020 vaddr=3c0b0020 size=23a74h (146036) map[0m
-[0;32mI (128) esp_image: segment 1: paddr=00043a9c vaddr=3fc91600 size=033e0h ( 13280) load[0m
-[0;32mI (131) esp_image: segment 2: paddr=00046e84 vaddr=40380000 size=09194h ( 37268) load[0m
-[0;32mI (139) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=ac084h (704644) map[0m
-[0;32mI (250) esp_image: segment 4: paddr=000fc0ac vaddr=40389194 size=08440h ( 33856) load[0m
-[0;32mI (256) esp_image: segment 5: paddr=001044f4 vaddr=50000000 size=00024h (    36) load[0m
-[0;32mI (262) boot: Loaded app from partition at offset 0x20000[0m
-[0;32mI (296) boot: Set actual ota_seq=1 in otadata[0][0m
-[0;32mI (296) boot: Disabling RNG early entropy source...[0m
-[0;32mI (305) cpu_start: Unicore app[0m
-[0;32mI (314) cpu_start: GPIO 20 and 21 are used as console UART I/O pins[0m
-[0;32mI (314) cpu_start: Pro cpu start user code[0m
-[0;32mI (314) cpu_start: cpu freq: 160000000 Hz[0m
-[0;32mI (316) app_init: Application information:[0m
-[0;32mI (320) app_init: Project name:     widf_mngr[0m
-[0;32mI (324) app_init: App version:      1.1.1[0m
-[0;32mI (328) app_init: Compile time:     Apr 26 2026 17:17:28[0m
-[0;32mI (333) app_init: ELF file SHA256:  ba81c07f2...[0m
-[0;32mI (337) app_init: ESP-IDF:          v6.0[0m
-[0;32mI (341) efuse_init: Min chip rev:     v0.3[0m
-[0;32mI (345) efuse_init: Max chip rev:     v1.99 [0m
-[0;32mI (349) efuse_init: Chip rev:         v0.3[0m
-[0;32mI (352) heap_init: Initializing. RAM available for dynamic allocation:[0m
-[0;32mI (359) heap_init: At 3FC9AF20 len 000250E0 (148 KiB): RAM[0m
-[0;32mI (364) heap_init: At 3FCC0000 len 0001C710 (113 KiB): Retention RAM[0m
-[0;32mI (370) heap_init: At 3FCDC710 len 00002950 (10 KiB): Retention RAM[0m
-[0;32mI (376) heap_init: At 50000024 len 00001FC4 (7 KiB): RTCRAM[0m
-[0;32mI (382) spi_flash: detected chip: generic[0m
-[0;32mI (385) spi_flash: flash io: dio[0m
-[0;32mI (389) sleep_gpio: Configure to isolate all GPIO pins in sleep state[0m
-[0;32mI (394) sleep_gpio: Enable automatic switching of GPIO sleep configuration[0m
-[0;32mI (401) main_task: Started on CPU0[0m
-[0;32mI (431) main_task: Calling app_main()[0m
-[0;32mI (431) widf_mngr: Button configured on GPIO3 (3000 ms long press)[0m
-[0;32mI (431) pp: pp rom version: 9387209[0m
-[0;32mI (441) net80211: net80211 rom version: 9387209[0m
-[0;32mI (451) wifi:wifi driver task: 3fca38dc, prio:23, stack:6656, core=0[0m
-[0;32mI (451) wifi:wifi firmware version: 44738b4[0m
-[0;32mI (451) wifi:wifi certification version: v7.0[0m
-[0;32mI (451) wifi:config NVS flash: enabled[0m
-[0;32mI (451) wifi:config nano formatting: disabled[0m
-[0;32mI (461) wifi:Init data frame dynamic rx buffer num: 32[0m
-[0;32mI (461) wifi:Init static rx mgmt buffer num: 5[0m
-[0;32mI (471) wifi:Init management short buffer num: 32[0m
-[0;32mI (471) wifi:Init dynamic tx buffer num: 32[0m
-[0;32mI (471) wifi:Init static tx FG buffer num: 2[0m
-[0;32mI (481) wifi:Init static rx buffer size: 1600[0m
-[0;32mI (481) wifi:Init static rx buffer num: 10[0m
-[0;32mI (491) wifi:Init dynamic rx buffer num: 32[0m
-[0;32mI (491) wifi_init: rx ba win: 6[0m
-[0;32mI (491) wifi_init: accept mbox: 6[0m
-[0;32mI (501) wifi_init: tcpip mbox: 32[0m
-[0;32mI (501) wifi_init: udp mbox: 6[0m
-[0;32mI (501) wifi_init: tcp mbox: 6[0m
-[0;32mI (501) wifi_init: tcp tx win: 5760[0m
-[0;32mI (511) wifi_init: tcp rx win: 5760[0m
-[0;32mI (511) wifi_init: tcp mss: 1440[0m
-[0;32mI (511) wifi_init: WiFi IRAM OP enabled[0m
-[0;32mI (521) wifi_init: WiFi RX IRAM OP enabled[0m
-[0;32mI (521) phy_init: phy_version 1232,d493f299,Aug 25 2025,19:01:20[0m
-[0;32mI (561) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(0)[0m
-[0;32mI (571) wifi:mode : sta (7c:df:a1:a3:48:18) + softAP (7c:df:a1:a3:48:19)[0m
-[0;32mI (571) wifi:enable tsf[0m
-[0;32mI (571) wifi:Total power save buffer number: 16[0m
-[0;32mI (581) wifi:Init max length of beacon: 752/752[0m
-[0;32mI (581) wifi:Init max length of beacon: 752/752[0m
-[0;32mI (591) esp_netif_lwip: DHCP server started on interface WIFI_AP_DEF with IP: 192.168.4.1[0m
-[0;32mI (591) widf_mngr: No saved credentials[0m
-[0;32mI (601) widf_mngr: fallback_mode: AP_PORTAL — opening portal[0m
-[0;32mI (3501) widf_mngr: Scan complete — 20 networks found[0m
-[0;32mI (3501) widf_handlers: HTTP server started — 13 routes registered[0m
-[0;32mI (3501) widf_mngr: Portal open — timeout in 180 s, or press Exit in browser[0m
+[0;32mI (94) esp_image: segment 0: paddr=00020020 vaddr=3c0b0020 size=23c74h (146548) map[0m
+[0;32mI (125) esp_image: segment 1: paddr=00043c9c vaddr=3fc91600 size=033e0h ( 13280) load[0m
+[0;32mI (127) esp_image: segment 2: paddr=00047084 vaddr=40380000 size=08f94h ( 36756) load[0m
+[0;32mI (135) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=ac290h (705168) map[0m
+[0;32mI (246) esp_image: segment 4: paddr=000fc2b8 vaddr=40388f94 size=08640h ( 34368) load[0m
+[0;32mI (253) esp_image: segment 5: paddr=00104900 vaddr=50000000 size=00024h (    36) load[0m
+[0;32mI (258) boot: Loaded app from partition at offset 0x20000[0m
+[0;32mI (258) boot: Disabling RNG early entropy source...[0m
+[0;32mI (271) cpu_start: Unicore app[0m
+[0;32mI (280) cpu_start: GPIO 20 and 21 are used as console UART I/O pins[0m
+[0;32mI (280) cpu_start: Pro cpu start user code[0m
+[0;32mI (280) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (282) app_init: Application information:[0m
+[0;32mI (286) app_init: Project name:     widf_mngr[0m
+[0;32mI (290) app_init: App version:      1.1.1[0m
+[0;32mI (293) app_init: Compile time:     Apr 26 2026 18:42:47[0m
+[0;32mI (299) app_init: ELF file SHA256:  b214d5547...[0m
+[0;32mI (303) app_init: ESP-IDF:          v6.0[0m
+[0;32mI (306) efuse_init: Min chip rev:     v0.3[0m
+[0;32mI (310) efuse_init: Max chip rev:     v1.99 [0m
+[0;32mI (314) efuse_init: Chip rev:         v0.3[0m
+[0;32mI (318) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (324) heap_init: At 3FC9AF20 len 000250E0 (148 KiB): RAM[0m
+[0;32mI (330) heap_init: At 3FCC0000 len 0001C710 (113 KiB): Retention RAM[0m
+[0;32mI (336) heap_init: At 3FCDC710 len 00002950 (10 KiB): Retention RAM[0m
+[0;32mI (342) heap_init: At 50000024 len 00001FC4 (7 KiB): RTCRAM[0m
+[0;32mI (348) spi_flash: detected chip: generic[0m
+[0;32mI (351) spi_flash: flash io: dio[0m
+[0;32mI (354) sleep_gpio: Configure to isolate all GPIO pins in sleep state[0m
+[0;32mI (360) sleep_gpio: Enable automatic switching of GPIO sleep configuration[0m
+[0;32mI (367) main_task: Started on CPU0[0m
+[0;32mI (397) main_task: Calling app_main()[0m
+[0;32mI (397) app: fallback_mode before call: 0[0m
+[0;32mI (397) widf_mngr: fallback_mode value: 0 (EVENT_ONLY=1, AP_PORTAL=0)[0m
+[0;32mI (407) widf_mngr: Button configured on GPIO3 (3000 ms long press)[0m
+[0;32mI (407) pp: pp rom version: 9387209[0m
+[0;32mI (407) net80211: net80211 rom version: 9387209[0m
+[0;32mI (417) wifi:wifi driver task: 3fca3858, prio:23, stack:6656, core=0[0m
+[0;32mI (417) wifi:wifi firmware version: 44738b4[0m
+[0;32mI (417) wifi:wifi certification version: v7.0[0m
+[0;32mI (427) wifi:config NVS flash: enabled[0m
+[0;32mI (427) wifi:config nano formatting: disabled[0m
+[0;32mI (427) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (437) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (437) wifi:Init management short buffer num: 32[0m
+[0;32mI (447) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (447) wifi:Init static tx FG buffer num: 2[0m
+[0;32mI (447) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (457) wifi:Init static rx buffer num: 10[0m
+[0;32mI (457) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (467) wifi_init: rx ba win: 6[0m
+[0;32mI (467) wifi_init: accept mbox: 6[0m
+[0;32mI (467) wifi_init: tcpip mbox: 32[0m
+[0;32mI (467) wifi_init: udp mbox: 6[0m
+[0;32mI (477) wifi_init: tcp mbox: 6[0m
+[0;32mI (477) wifi_init: tcp tx win: 5760[0m
+[0;32mI (477) wifi_init: tcp rx win: 5760[0m
+[0;32mI (487) wifi_init: tcp mss: 1440[0m
+[0;32mI (487) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (487) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (497) phy_init: phy_version 1232,d493f299,Aug 25 2025,19:01:20[0m
+[0;32mI (537) wifi:mode : sta (7c:df:a1:a3:48:18) + softAP (7c:df:a1:a3:48:19)[0m
+[0;32mI (537) wifi:enable tsf[0m
+[0;32mI (537) wifi:Total power save buffer number: 16[0m
+[0;32mI (537) wifi:Init max length of beacon: 752/752[0m
+[0;32mI (537) wifi:Init max length of beacon: 752/752[0m
+[0;32mI (547) esp_netif_lwip: DHCP server started on interface WIFI_AP_DEF with IP: 192.168.4.1[0m
+[0;32mI (557) widf_mngr: No saved credentials[0m
+[0;32mI (557) widf_mngr: fallback_mode: AP_PORTAL — opening portal[0m
+[0;32mI (3467) widf_mngr: Scan complete — 20 networks found[0m
+[0;32mI (3467) widf_handlers: HTTP server started — 13 routes registered[0m
+[0;32mI (3467) app: EVENT: PORTAL_OPENED[0m
+[0;32mI (3467) widf_mngr: Portal open — timeout in 180 s, or press Exit in browser[0m
+[0;32mI (20097) wifi:new:<3,0>, old:<3,1>, ap:<3,1>, sta:<0,0>, prof:3, snd_ch_cfg:0x0[0m
+[0;32mI (20097) wifi:station: b6:ce:17:58:f8:8b join, AID=1, bgn, 20[0m
+[0;32mI (20097) widf_mngr: Device b6:ce:17:58:f8:8b joined portal AP, AID=1[0m
+[0;32mI (20257) wifi:<ba-add>idx:2 (ifx:1, b6:ce:17:58:f8:8b), tid:0, ssn:0, winSize:64[0m
+[0;32mI (20317) esp_netif_lwip: DHCP server assigned IP to a client, IP is: 192.168.4.2[0m
+[0;33mW (21407) wifi:Haven't to connect to a suitable AP now![0m
+[0;33mW (40807) wifi:Haven't to connect to a suitable AP now![0m
+[0;33mW (73887) wifi:Haven't to connect to a suitable AP now![0m
+[0;33mW (82597) wifi:Haven't to connect to a suitable AP now![0m
+[0;32mI (95027) widf_handlers: Saving credentials for SSID: GL-MT300N-V2-3a0[0m
+[0;32mI (95027) widf_handlers: Credentials saved. SSID: GL-MT300N-V2-3a0[0m
+[0;32mI (95027) app: EVENT: CREDENTIALS_SAVED — GL-MT300N-V2-3a0[0m
 [0m
-Done
