@@ -1,5 +1,5 @@
 /*  widf_mngr_main.c — WIDF Manager system core
- *    WIDF Manager v1.1.2 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.1.3 — ESP-IDF native, ESP32 family
  *
  *    Developed and tested on M5Stamp C3 (ESP32-C3). Compatible with any
  *    ESP32 variant — set reopen_gpio in widf_mngr_config_t to match your board.
@@ -44,6 +44,14 @@
 /* ── Constants ───────────────────────────────────────────────────────────── */
 #define WIFI_SCAN_MAX_AP   20
 #define BUTTON_POLL_MS     50
+
+#define WIDF_MAX_NETWORKS  3
+#define NVS_KEY_NET_COUNT  "net_count"
+
+typedef struct {
+    char ssid[33];
+    char password[65];
+} widf_network_t;
 
 /* ── Globals ─────────────────────────────────────────────────────────────── */
 static const char *TAG = "widf_mngr";
@@ -210,22 +218,39 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
-/* ── NVS ─────────────────────────────────────────────────────────────────── */
-#define NVS_KEY_SSID  "ssid"
-#define NVS_KEY_PASS  "password"
-
-static bool portal_nvs_load_creds(char *ssid, char *password)
+/* Loads all stored networks from NVS into the provided array.
+ * Returns the number of networks loaded (0 if none). */
+static int portal_nvs_load_all_creds(widf_network_t *networks)
 {
     const char *ns = s_cfg ? s_cfg->nvs_namespace : "wifi_creds";
     nvs_handle_t handle;
-    if (nvs_open(ns, NVS_READONLY, &handle) != ESP_OK) return false;
-    size_t ssid_len = 33, pass_len = 65;
-    esp_err_t err  = nvs_get_str(handle, NVS_KEY_SSID, ssid, &ssid_len);
-    err |= nvs_get_str(handle, NVS_KEY_PASS, password, &pass_len);
+    if (nvs_open(ns, NVS_READONLY, &handle) != ESP_OK) return 0;
+
+    uint8_t count = 0;
+    nvs_get_u8(handle, NVS_KEY_NET_COUNT, &count);
+    if (count > WIDF_MAX_NETWORKS) count = WIDF_MAX_NETWORKS;
+
+    int loaded = 0;
+    for (int i = 0; i < count; i++) {
+        char key_ssid[12], key_pass[12];
+        snprintf(key_ssid, sizeof(key_ssid), "ssid_%d", i);
+        snprintf(key_pass, sizeof(key_pass), "pass_%d", i);
+
+        size_t ssid_len = sizeof(networks[i].ssid);
+        size_t pass_len = sizeof(networks[i].password);
+
+        esp_err_t err  = nvs_get_str(handle, key_ssid,
+                                     networks[i].ssid, &ssid_len);
+        err |= nvs_get_str(handle, key_pass,
+                           networks[i].password, &pass_len);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Network[%d] loaded: %s", i, networks[i].ssid);
+            loaded++;
+        }
+    }
+
     nvs_close(handle);
-    if (err != ESP_OK) return false;
-    ESP_LOGI(TAG, "Credentials loaded. SSID: %s", ssid);
-    return true;
+    return loaded;
 }
 
 /* ── WiFi init ───────────────────────────────────────────────────────────── */
@@ -320,6 +345,32 @@ static bool try_sta_connect(const char *ssid, const char *password)
     vEventGroupDelete(s_wifi_event_group);
 
     return (bits & WIFI_CONNECTED_BIT) != 0;
+}
+
+/* Attempts connection to all stored networks in order (newest first).
+ * Returns true if any network connects successfully. */
+static bool try_all_networks(void)
+{
+    widf_network_t networks[WIDF_MAX_NETWORKS] = {0};
+    int count = portal_nvs_load_all_creds(networks);
+
+    if (count == 0) {
+        ESP_LOGI(TAG, "No saved networks");
+        return false;
+    }
+
+    for (int i = 0; i < count; i++) {
+        ESP_LOGI(TAG, "Trying network [%d/%d]: %s", i + 1, count,
+                 networks[i].ssid);
+        if (try_sta_connect(networks[i].ssid, networks[i].password)) {
+            return true;
+        }
+        ESP_LOGW(TAG, "Network [%d/%d] failed: %s", i + 1, count,
+                 networks[i].ssid);
+    }
+
+    ESP_LOGE(TAG, "All %d network(s) failed", count);
+    return false;
 }
 
 /* Applies on_connect_mode after a successful STA connection.
@@ -420,22 +471,12 @@ esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
     wifi_configure_ap();
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    /* Initial STA connect attempt */
-    char ssid[33]     = {0};
-    char password[65] = {0};
-    bool connected    = false;
-
-    if (portal_nvs_load_creds(ssid, password)) {
-        ESP_LOGI(TAG, "Trying saved credentials for: %s", ssid);
-        connected = try_sta_connect(ssid, password);
-        if (connected) {
-            ESP_LOGI(TAG, "Connected to \"%s\"", ssid);
-            handle_connect_result(true);
-        } else {
-            ESP_LOGW(TAG, "Could not connect to \"%s\"", ssid);
-        }
+    bool connected = false;
+    connected = try_all_networks();
+    if (connected) {
+        handle_connect_result(true);
     } else {
-        ESP_LOGI(TAG, "No saved credentials");
+        ESP_LOGW(TAG, "Could not connect to any saved network");
     }
 
     /* Apply fallback_mode if not connected */
@@ -458,10 +499,9 @@ esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
         /* Handle reconnect request from save_post_handler() */
         if (g_reconnect_requested) {
             g_reconnect_requested = false;
-            ESP_LOGI(TAG, "Reconnecting to \"%s\"", g_reconnect_ssid);
-            connected = try_sta_connect(g_reconnect_ssid, g_reconnect_pass);
+            ESP_LOGI(TAG, "Reconnecting after credential save");
+            connected = try_all_networks();
             if (connected) {
-                ESP_LOGI(TAG, "Reconnected to \"%s\"", g_reconnect_ssid);
                 handle_connect_result(true);
             } else {
                 ESP_LOGW(TAG, "Reconnect failed — reopening portal");
@@ -470,7 +510,6 @@ esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
             memset(g_reconnect_pass, 0, sizeof(g_reconnect_pass));
             continue;
         }
-
         wifi_ap_record_t ap_info;
         connected = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
 
@@ -489,19 +528,12 @@ esp_err_t widf_mngr_run(const widf_mngr_config_t *config)
 
         wait_for_long_press(s_cfg->reopen_gpio, s_cfg->long_press_ms);
 
-        memset(ssid,     0, sizeof(ssid));
-        memset(password, 0, sizeof(password));
-        if (portal_nvs_load_creds(ssid, password)) {
-            ESP_LOGI(TAG, "Long press: trying STA reconnect to \"%s\"", ssid);
-            connected = try_sta_connect(ssid, password);
-            if (connected) {
-                ESP_LOGI(TAG, "Reconnected to \"%s\"", ssid);
-                handle_connect_result(true);
-            } else {
-                ESP_LOGW(TAG, "Reconnect failed — opening portal");
-            }
+        ESP_LOGI(TAG, "Long press: trying saved networks");
+        connected = try_all_networks();
+        if (connected) {
+            handle_connect_result(true);
         } else {
-            ESP_LOGI(TAG, "Long press: no saved credentials — opening portal");
+            ESP_LOGW(TAG, "Reconnect failed — opening portal");
         }
     }
 

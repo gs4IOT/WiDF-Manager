@@ -1,5 +1,5 @@
 /*  widf_mngr_handlers.c — HTTP handlers for WIDF Manager
- *    WIDF Manager v1.1.2 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.1.3 — ESP-IDF native, ESP32 family
  *
  *    All httpd URI handler functions and start_webserver() live here.
  *    System logic (WiFi, NVS, scan, app_main) stays in widf_mngr_main.c.
@@ -61,19 +61,80 @@ char           g_reconnect_pass[65]  = {0};
 
 /* ── NVS ─────────────────────────────────────────────────────────────────── */
 #define NVS_NAMESPACE  "wifi_creds"
-#define NVS_KEY_SSID   "ssid"
-#define NVS_KEY_PASS   "password"
+#define WIDF_MAX_NETWORKS  3
+#define NVS_KEY_NET_COUNT  "net_count"
 
-/* Saves SSID and password to NVS. Called by save_post_handler. */
+/* Saves credentials using multi-network indexed NVS storage.
+ *   - If SSID already exists: update password in place
+ *   - If new: shift existing entries down, write at index 0
+ *   - Maximum WIDF_MAX_NETWORKS entries, oldest dropped on overflow */
 static bool portal_nvs_save_creds(const char *ssid, const char *password)
 {
+    extern const widf_mngr_config_t *widf_mngr_get_config(void);
+    const widf_mngr_config_t *mcfg = widf_mngr_get_config();
+    const char *ns = mcfg ? mcfg->nvs_namespace : NVS_NAMESPACE;
     nvs_handle_t handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return false;
-    nvs_set_str(handle, NVS_KEY_SSID, ssid);
-    nvs_set_str(handle, NVS_KEY_PASS, password);
+    if (nvs_open(ns, NVS_READWRITE, &handle) != ESP_OK) return false;
+
+    /* Read current count */
+    uint8_t count = 0;
+    nvs_get_u8(handle, NVS_KEY_NET_COUNT, &count);
+    if (count > WIDF_MAX_NETWORKS) count = WIDF_MAX_NETWORKS;
+
+    /* Check if SSID already exists — update password in place */
+    char key_ssid[12], key_pass[12];
+    char stored_ssid[33] = {0};
+    size_t ssid_len = sizeof(stored_ssid);
+
+    for (int i = 0; i < count; i++) {
+        snprintf(key_ssid, sizeof(key_ssid), "ssid_%d", i);
+        ssid_len = sizeof(stored_ssid);
+        if (nvs_get_str(handle, key_ssid, stored_ssid, &ssid_len) == ESP_OK) {
+            if (strcmp(stored_ssid, ssid) == 0) {
+                snprintf(key_pass, sizeof(key_pass), "pass_%d", i);
+                nvs_set_str(handle, key_pass, password);
+                nvs_commit(handle);
+                nvs_close(handle);
+                ESP_LOGI(TAG, "Updated password for existing SSID: %s", ssid);
+                return true;
+            }
+        }
+    }
+
+    /* New SSID — shift entries down, cap at WIDF_MAX_NETWORKS */
+    int new_count = (count < WIDF_MAX_NETWORKS) ? count + 1 : WIDF_MAX_NETWORKS;
+    int shift_to  = new_count - 1;
+
+    /* Shift from bottom up to avoid overwriting */
+    for (int i = shift_to; i > 0; i--) {
+        char src_ssid[12], src_pass[12];
+        char dst_ssid[12], dst_pass[12];
+        char val_ssid[33] = {0}, val_pass[65] = {0};
+        size_t val_len;
+
+        snprintf(src_ssid, sizeof(src_ssid), "ssid_%d", i - 1);
+        snprintf(src_pass, sizeof(src_pass), "pass_%d", i - 1);
+        snprintf(dst_ssid, sizeof(dst_ssid), "ssid_%d", i);
+        snprintf(dst_pass, sizeof(dst_pass), "pass_%d", i);
+
+        val_len = sizeof(val_ssid);
+        if (nvs_get_str(handle, src_ssid, val_ssid, &val_len) == ESP_OK)
+            nvs_set_str(handle, dst_ssid, val_ssid);
+
+        val_len = sizeof(val_pass);
+        if (nvs_get_str(handle, src_pass, val_pass, &val_len) == ESP_OK)
+            nvs_set_str(handle, dst_pass, val_pass);
+    }
+
+    /* Write new entry at index 0 */
+    nvs_set_str(handle, "ssid_0", ssid);
+    nvs_set_str(handle, "pass_0", password);
+    nvs_set_u8(handle,  NVS_KEY_NET_COUNT, (uint8_t)new_count);
     nvs_commit(handle);
     nvs_close(handle);
-    ESP_LOGI(TAG, "Credentials saved. SSID: %s", ssid);
+
+    ESP_LOGI(TAG, "Saved new network at index 0: %s (%d/%d stored)",
+             ssid, new_count, WIDF_MAX_NETWORKS);
     return true;
 }
 

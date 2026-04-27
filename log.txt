@@ -19,7 +19,7 @@ load:0x403ce710,len:0x2fbc
 entry 0x403cbf1a
 [0m--- 0x403cbf1a: [0;33mcall_start_cpu0[0m[0m at [0;32m/home/stephan/.espressif/v6.0/esp-idf/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m27[0m
 [0;32mI (30) boot: ESP-IDF v6.0 2nd stage bootloader[0m
-[0;32mI (30) boot: compile time Apr 26 2026 18:42:56[0m
+[0;32mI (30) boot: compile time Apr 26 2026 20:02:59[0m
 [0;32mI (30) boot: chip revision: v0.3[0m
 [0;32mI (30) boot: efuse block revision: v1.1[0m
 [0;32mI (34) boot.esp32c3: SPI Speed      : 80MHz[0m
@@ -34,12 +34,12 @@ entry 0x403cbf1a
 [0;32mI (78) boot:  3 ota_0            OTA app          00 10 00020000 001c0000[0m
 [0;32mI (85) boot:  4 ota_1            OTA app          00 11 001e0000 001c0000[0m
 [0;32mI (91) boot: End of partition table[0m
-[0;32mI (94) esp_image: segment 0: paddr=00020020 vaddr=3c0b0020 size=23c74h (146548) map[0m
-[0;32mI (125) esp_image: segment 1: paddr=00043c9c vaddr=3fc91600 size=033e0h ( 13280) load[0m
-[0;32mI (127) esp_image: segment 2: paddr=00047084 vaddr=40380000 size=08f94h ( 36756) load[0m
-[0;32mI (135) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=ac290h (705168) map[0m
-[0;32mI (246) esp_image: segment 4: paddr=000fc2b8 vaddr=40388f94 size=08640h ( 34368) load[0m
-[0;32mI (253) esp_image: segment 5: paddr=00104900 vaddr=50000000 size=00024h (    36) load[0m
+[0;32mI (94) esp_image: segment 0: paddr=00020020 vaddr=3c0b0020 size=23bf4h (146420) map[0m
+[0;32mI (125) esp_image: segment 1: paddr=00043c1c vaddr=3fc91600 size=033e0h ( 13280) load[0m
+[0;32mI (127) esp_image: segment 2: paddr=00047004 vaddr=40380000 size=09014h ( 36884) load[0m
+[0;32mI (135) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=ac404h (705540) map[0m
+[0;32mI (246) esp_image: segment 4: paddr=000fc42c vaddr=40389014 size=085c0h ( 34240) load[0m
+[0;32mI (253) esp_image: segment 5: paddr=001049f4 vaddr=50000000 size=00024h (    36) load[0m
 [0;32mI (258) boot: Loaded app from partition at offset 0x20000[0m
 [0;32mI (258) boot: Disabling RNG early entropy source...[0m
 [0;32mI (271) cpu_start: Unicore app[0m
@@ -48,15 +48,15 @@ entry 0x403cbf1a
 [0;32mI (280) cpu_start: cpu freq: 160000000 Hz[0m
 [0;32mI (282) app_init: Application information:[0m
 [0;32mI (286) app_init: Project name:     widf_mngr[0m
-[0;32mI (290) app_init: App version:      1.1.1[0m
-[0;32mI (293) app_init: Compile time:     Apr 26 2026 18:42:47[0m
-[0;32mI (299) app_init: ELF file SHA256:  b214d5547...[0m
+[0;32mI (290) app_init: App version:      1.1.2[0m
+[0;32mI (294) app_init: Compile time:     Apr 26 2026 20:02:50[0m
+[0;32mI (299) app_init: ELF file SHA256:  0544919ab...[0m
 [0;32mI (303) app_init: ESP-IDF:          v6.0[0m
-[0;32mI (306) efuse_init: Min chip rev:     v0.3[0m
+[0;32mI (307) efuse_init: Min chip rev:     v0.3[0m
 [0;32mI (310) efuse_init: Max chip rev:     v1.99 [0m
 [0;32mI (314) efuse_init: Chip rev:         v0.3[0m
 [0;32mI (318) heap_init: Initializing. RAM available for dynamic allocation:[0m
-[0;32mI (324) heap_init: At 3FC9AF20 len 000250E0 (148 KiB): RAM[0m
+[0;32mI (325) heap_init: At 3FC9AF20 len 000250E0 (148 KiB): RAM[0m
 [0;32mI (330) heap_init: At 3FCC0000 len 0001C710 (113 KiB): Retention RAM[0m
 [0;32mI (336) heap_init: At 3FCDC710 len 00002950 (10 KiB): Retention RAM[0m
 [0;32mI (342) heap_init: At 50000024 len 00001FC4 (7 KiB): RTCRAM[0m
@@ -66,12 +66,10 @@ entry 0x403cbf1a
 [0;32mI (360) sleep_gpio: Enable automatic switching of GPIO sleep configuration[0m
 [0;32mI (367) main_task: Started on CPU0[0m
 [0;32mI (397) main_task: Calling app_main()[0m
-[0;32mI (397) app: fallback_mode before call: 0[0m
-[0;32mI (397) widf_mngr: fallback_mode value: 0 (EVENT_ONLY=1, AP_PORTAL=0)[0m
 [0;32mI (407) widf_mngr: Button configured on GPIO3 (3000 ms long press)[0m
 [0;32mI (407) pp: pp rom version: 9387209[0m
 [0;32mI (407) net80211: net80211 rom version: 9387209[0m
-[0;32mI (417) wifi:wifi driver task: 3fca3858, prio:23, stack:6656, core=0[0m
+[0;32mI (417) wifi:wifi driver task: 3fca38fc, prio:23, stack:6656, core=0[0m
 [0;32mI (417) wifi:wifi firmware version: 44738b4[0m
 [0;32mI (417) wifi:wifi certification version: v7.0[0m
 [0;32mI (427) wifi:config NVS flash: enabled[0m
@@ -94,29 +92,40 @@ entry 0x403cbf1a
 [0;32mI (487) wifi_init: tcp mss: 1440[0m
 [0;32mI (487) wifi_init: WiFi IRAM OP enabled[0m
 [0;32mI (487) wifi_init: WiFi RX IRAM OP enabled[0m
-[0;32mI (497) phy_init: phy_version 1232,d493f299,Aug 25 2025,19:01:20[0m
-[0;32mI (537) wifi:mode : sta (7c:df:a1:a3:48:18) + softAP (7c:df:a1:a3:48:19)[0m
-[0;32mI (537) wifi:enable tsf[0m
-[0;32mI (537) wifi:Total power save buffer number: 16[0m
-[0;32mI (537) wifi:Init max length of beacon: 752/752[0m
-[0;32mI (537) wifi:Init max length of beacon: 752/752[0m
-[0;32mI (547) esp_netif_lwip: DHCP server started on interface WIFI_AP_DEF with IP: 192.168.4.1[0m
-[0;32mI (557) widf_mngr: No saved credentials[0m
-[0;32mI (557) widf_mngr: fallback_mode: AP_PORTAL — opening portal[0m
-[0;32mI (3467) widf_mngr: Scan complete — 20 networks found[0m
-[0;32mI (3467) widf_handlers: HTTP server started — 13 routes registered[0m
-[0;32mI (3467) app: EVENT: PORTAL_OPENED[0m
-[0;32mI (3467) widf_mngr: Portal open — timeout in 180 s, or press Exit in browser[0m
-[0;32mI (20097) wifi:new:<3,0>, old:<3,1>, ap:<3,1>, sta:<0,0>, prof:3, snd_ch_cfg:0x0[0m
-[0;32mI (20097) wifi:station: b6:ce:17:58:f8:8b join, AID=1, bgn, 20[0m
-[0;32mI (20097) widf_mngr: Device b6:ce:17:58:f8:8b joined portal AP, AID=1[0m
-[0;32mI (20257) wifi:<ba-add>idx:2 (ifx:1, b6:ce:17:58:f8:8b), tid:0, ssn:0, winSize:64[0m
-[0;32mI (20317) esp_netif_lwip: DHCP server assigned IP to a client, IP is: 192.168.4.2[0m
-[0;33mW (21407) wifi:Haven't to connect to a suitable AP now![0m
-[0;33mW (40807) wifi:Haven't to connect to a suitable AP now![0m
-[0;33mW (73887) wifi:Haven't to connect to a suitable AP now![0m
-[0;33mW (82597) wifi:Haven't to connect to a suitable AP now![0m
-[0;32mI (95027) widf_handlers: Saving credentials for SSID: GL-MT300N-V2-3a0[0m
-[0;32mI (95027) widf_handlers: Credentials saved. SSID: GL-MT300N-V2-3a0[0m
-[0;32mI (95027) app: EVENT: CREDENTIALS_SAVED — GL-MT300N-V2-3a0[0m
+[0;32mI (507) phy_init: phy_version 1232,d493f299,Aug 25 2025,19:01:20[0m
+[0;32mI (547) wifi:mode : sta (7c:df:a1:a3:48:18) + softAP (7c:df:a1:a3:48:19)[0m
+[0;32mI (547) wifi:enable tsf[0m
+[0;32mI (547) wifi:Total power save buffer number: 16[0m
+[0;32mI (547) wifi:Init max length of beacon: 752/752[0m
+[0;32mI (547) wifi:Init max length of beacon: 752/752[0m
+[0;32mI (557) esp_netif_lwip: DHCP server started on interface WIFI_AP_DEF with IP: 192.168.4.1[0m
+[0;32mI (567) widf_mngr: Network[0] loaded: GL-MT300N-V2-3a0[0m
+[0;32mI (567) widf_mngr: Trying network [1/1]: GL-MT300N-V2-3a0[0m
+[0;33mW (567) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2[0m
+[0;32mI (577) app: EVENT: STA_TRYING — GL-MT300N-V2-3a0 (3 retries budget)[0m
+[0;32mI (597) wifi:ap channel adjust o:3,1 n:1,1[0m
+[0;32mI (597) wifi:new:<1,1>, old:<3,1>, ap:<1,1>, sta:<1,1>, prof:3, snd_ch_cfg:0x0[0m
+[0;32mI (597) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (617) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (627) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (747) wifi:connected with GL-MT300N-V2-3a0, aid = 2, channel 1, 40U, bssid = 94:83:c4:02:a3:a0[0m
+[0;32mI (747) wifi:security: WPA2-PSK, phy: bgn, rssi: -42[0m
+[0;32mI (757) wifi:pm start, type: 1[0m
+
+[0;32mI (757) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (767) wifi:set rx beacon pti, rx_bcn_pti: 0, bcn_timeout: 25000, mt_pti: 0, mt_time: 10000[0m
+[0;32mI (807) wifi:<ba-add>idx:0 (ifx:0, 94:83:c4:02:a3:a0), tid:6, ssn:2, winSize:64[0m
+[0;32mI (837) wifi:AP's beacon interval = 102400 us, DTIM period = 1[0m
+[0;32mI (1797) esp_netif_handlers: sta ip: 192.168.8.143, mask: 255.255.255.0, gw: 192.168.8.1[0m
+[0;32mI (1797) widf_mngr: Connected! IP: 192.168.8.143[0m
+[0;32mI (1797) app: EVENT: STA_CONNECTED — GL-MT300N-V2-3a0 @ 192.168.8.143[0m
+[0;32mI (1807) mdns_mem: mDNS task will be created from internal RAM[0m
+[0;32mI (1807) widf_mngr: mDNS started — reachable at widf.local[0m
+[0;32mI (1807) wifi:mode : sta (7c:df:a1:a3:48:18)[0m
+[0;32mI (1827) widf_mngr: on_connect: AP down[0m
+[0;32mI (4727) widf_mngr: Scan complete — 20 networks found[0m
+[0;32mI (4727) widf_handlers: HTTP server started — 13 routes registered[0m
+[0;32mI (4737) app: EVENT: PORTAL_OPENED[0m
+[0;32mI (4737) widf_mngr: Portal open — timeout in 180 s, or press Exit in browser[0m
+[0;32mI (5877) wifi:<ba-add>idx:1 (ifx:0, 94:83:c4:02:a3:a0), tid:0, ssn:2, winSize:64[0m
 [0m
