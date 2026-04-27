@@ -1,5 +1,5 @@
 /*  widf_mngr_handlers.c — HTTP handlers for WIDF Manager
- *    WIDF Manager v1.1.3 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.2.0 — ESP-IDF native, ESP32 family
  *
  *    All httpd URI handler functions and start_webserver() live here.
  *    System logic (WiFi, NVS, scan, app_main) stays in widf_mngr_main.c.
