@@ -1,5 +1,5 @@
 /*  widf_mngr_main.c — WIDF Manager system core
- *    WIDF Manager v1.1.3 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.2.0 — ESP-IDF native, ESP32 family
  *
  *    Developed and tested on M5Stamp C3 (ESP32-C3). Compatible with any
  *    ESP32 variant — set reopen_gpio in widf_mngr_config_t to match your board.

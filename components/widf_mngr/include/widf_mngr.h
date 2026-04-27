@@ -1,5 +1,5 @@
 /*  widf_mngr.h — Public API for WIDF Manager
- *    WIDF Manager v1.1.2 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.2.0 — ESP-IDF native, ESP32 family
  *
  *    Usage:
  *      1. Fill in a widf_mngr_config_t struct
