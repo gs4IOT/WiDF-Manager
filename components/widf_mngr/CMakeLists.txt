@@ -3,7 +3,7 @@ idf_component_register(SRCS "widf_mngr_main.c"
                              "widf_mngr_dns.c"
                 REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_http_server spi_flash
                          esp_driver_tsens esp_driver_gpio esp_app_format app_update
-                         esp_timer esp_partition mdns
+                         esp_timer esp_partition mdns esp_hw_support
                 PRIV_INCLUDE_DIRS "."
                 INCLUDE_DIRS "include"
                 EMBED_TXTFILES "Top_portal.html"

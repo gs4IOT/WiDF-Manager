@@ -43,6 +43,7 @@ static void on_widf_event(const widf_event_data_t *evt)
 void app_main(void)
 {
     widf_mngr_config_t cfg = WIDF_MNGR_DEFAULT_CONFIG();
+    strncpy(cfg.auth_password, "test1234", sizeof(cfg.auth_password));
     cfg.on_event = on_widf_event;
     widf_mngr_run(&cfg);
 }

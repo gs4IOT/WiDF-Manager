@@ -32,6 +32,10 @@
 ".pri{background:#4361ee;color:#fff}" \
 ".sec{background:#f0f2f5;color:#444}" \
 ".warn{background:#fff0f0;color:#c0392b}" \
+".pw{position:relative}" \
+".eye{position:absolute;right:12px;top:50%%;transform:translateY(-50%%);" \
+"background:none;border:none;color:#4361ee;font-size:.82rem;" \
+"font-weight:600;cursor:pointer}" \
 "</style></head><body>"
 
 /* ── Shared scan options buffer ──────────────────────────────────────────── */
@@ -62,6 +66,12 @@ esp_err_t restart_handler               (httpd_req_t *req);
 esp_err_t exit_handler                  (httpd_req_t *req);
 esp_err_t captive_redirect_handler      (httpd_req_t *req);
 esp_err_t favicon_handler               (httpd_req_t *req);
+
+esp_err_t auth_get_handler  (httpd_req_t *req);
+esp_err_t auth_post_handler (httpd_req_t *req);
+
+/* Called by portal_run() in widf_mngr_main.c to invalidate session on close */
+void auth_clear_token(void);
 
 void build_scan_options         (wifi_ap_record_t *records, uint16_t count);
 

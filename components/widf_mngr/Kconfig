@@ -53,6 +53,14 @@ menu "WIDF Manager Configuration"
             Resolved integer value of wifi_auth_mode_t passed to the WiFi driver.
             0=OPEN, 3=WPA2_PSK, 6=WPA3_PSK, 7=WPA2_WPA3_PSK.
 
+    config PORTAL_AUTH_PASSWORD
+        string "Portal authentication password"
+        default ""
+        help
+            Password required to access protected portal routes (/ota, /erase).
+            Leave empty to disable authentication — protected routes are
+            accessible without a password. Recommended for production devices.
+
     config PORTAL_AP_CHANNEL
         int "Portal AP Channel"
         range 1 13

@@ -23,6 +23,10 @@ void app_main(void)
     // strncpy(cfg.ap_password, "mypassword", sizeof(cfg.ap_password));
     // cfg.ap_authmode = WIFI_AUTH_WPA2_WPA3_PSK;
 
+    /* Portal authentication — uncomment to protect /ota and /erase.
+     * Leave empty (default) to disable authentication entirely. */
+    // strncpy(cfg.auth_password, "adminpass", sizeof(cfg.auth_password));
+
     /* GPIO long press to reopen portal — adjust for your board:
      *   GPIO3  — M5Stamp C3 (default)
      *   GPIO0  — ESP32 DevKit

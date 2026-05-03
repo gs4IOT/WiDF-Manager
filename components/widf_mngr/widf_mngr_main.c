@@ -1,5 +1,5 @@
 /*  widf_mngr_main.c — WIDF Manager system core
- *    WIDF Manager v1.3.0 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.3.1 — ESP-IDF native, ESP32 family
  *
  *    Developed and tested on M5Stamp C3 (ESP32-C3). Compatible with any
  *    ESP32 variant — set reopen_gpio in widf_mngr_config_t to match your board.
@@ -500,6 +500,8 @@ static void portal_run(void)
         httpd_stop(g_server);
         g_server = NULL;
     }
+
+    auth_clear_token();   /* invalidate session on portal close */
 
     widf_event_data_t close_evt = { .event = WIDF_EVENT_PORTAL_CLOSED };
     widf_fire_event(&close_evt);

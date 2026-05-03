@@ -13,6 +13,7 @@ Designed as a reusable subsystem: call `widf_mngr_run()` from your `app_main()` 
 - **Event callbacks** — register a single `on_event` callback to receive all lifecycle events: STA connect/disconnect/fail, portal open/close, and credential save
 - **Flow control modes** — three independent mode fields control behavior at each lifecycle transition: on boot failure, on credential save, and on STA connect
 - **Multi-network credentials** — up to 3 networks stored in NVS, tried newest-first on boot; new credentials shift existing ones down, oldest dropped at limit
+- **Portal authentication** — password-protect destructive routes (`/ota`, `/erase`); session token generated per portal session via `esp_random()`; configurable via Kconfig or runtime config; empty password disables auth (backward compatible)
 - **AP security** — WPA2, WPA3, and WPA2/WPA3 mixed mode support for the portal AP; MAC-derived SSID suffix and password fallback when using Kconfig defaults
 - **No-reboot reconnect** — after credentials are saved via the portal, the WiFi stack reconnects in place without rebooting the device
 - **Network scan** — live list of nearby networks with signal strength bars, dBm value, and encryption type
@@ -134,6 +135,9 @@ typedef struct {
                                          /* >0 = GPIO pin number for long press           */
     uint32_t          long_press_ms;     /* Long press duration in ms                     */
 
+    /* Authentication */
+    char              auth_password[64]; /* Portal auth password — empty = disabled       */
+
     /* Device */
     char              hostname[32];      /* mDNS / DHCP hostname (default: "widf")        */
     char              nvs_namespace[16]; /* NVS namespace for credential storage          */
@@ -211,6 +215,22 @@ typedef void (*widf_event_cb_t)(const widf_event_data_t *event);
 | `WIDF_EVENT_AP_PASSWORD_FALLBACK` | Invalid AP password, MAC-derived fallback used | `password`, `reason` |
 
 The callback runs in the `widf_mngr` task context — keep it non-blocking.
+
+---
+
+## Portal Authentication
+
+Routes `/ota`, `/ota/upload`, and `/erase` are protected by an optional password. When `auth_password` is set, accessing these routes redirects to `/auth` where the user must enter the password. On success a session cookie is set and the user is redirected to the original route. The session token is generated randomly at portal start via `esp_random()` and cleared when the portal closes.
+
+Set `auth_password` to an empty string (default) to disable authentication entirely — protected routes are accessible without a password, preserving backward compatibility.
+
+```c
+widf_mngr_config_t cfg = WIDF_MNGR_DEFAULT_CONFIG();
+strncpy(cfg.auth_password, "mypassword", sizeof(cfg.auth_password));
+widf_mngr_run(&cfg);
+```
+
+Or set via Kconfig: `PORTAL_AUTH_PASSWORD`.
 
 ---
 
@@ -329,7 +349,7 @@ widf_mngr_run(&cfg)
   ├─┐ portal_run() ←────────────────────────────────────────────┐
   │ ├─ wifi_scan() — blocking, populates scan buffer             │
   │ ├─ [dns_server_start() if PORTAL_DNS_ENABLED]                │
-  │ ├─ start_webserver() — 13 routes registered                  │
+  │ ├─ start_webserver() — 15 routes registered                  │
   │ ├─ WIDF_EVENT_PORTAL_OPENED fired                            │
   │ ├─ Poll loop every 500ms:                                    │
   │ │     timeout reached → break                                │
@@ -409,6 +429,7 @@ Run `idf.py menuconfig` → **WIDF Manager Configuration** for build-time defaul
 | `PORTAL_AP_SSID` | `WIDF-MANAGER` | SSID broadcast by the portal AP |
 | `PORTAL_AP_PASSWORD` | `""` | AP password — leave empty for open AP (min 8 chars for WPA2/WPA3) |
 | `PORTAL_AP_AUTHMODE` | `WPA2/WPA3 mixed` | AP security mode — OPEN, WPA2, WPA3, or WPA2/WPA3 mixed |
+| `PORTAL_AUTH_PASSWORD` | `""` | Portal auth password for `/ota` and `/erase` — leave empty to disable |
 | `PORTAL_AP_CHANNEL` | `3` | WiFi channel for the AP (1–13) |
 | `PORTAL_MAX_STA_CONN` | `5` | Maximum simultaneous clients on the portal AP |
 | `PORTAL_TIMEOUT_S` | `180` | Seconds before the portal auto-closes |
@@ -428,11 +449,13 @@ Run `idf.py menuconfig` → **WIDF Manager Configuration** for build-time defaul
 | `/wifi/refresh` | GET | Re-scan networks and redirect back to `/wifi` |
 | `/save` | POST | Save credentials to NVS; behavior controlled by `on_save_mode` |
 | `/info` | GET | Live device info — chip, memory, uptime, temperature, WiFi details, route table |
-| `/erase` | GET | Erase all WiFi credentials from NVS and reboot |
-| `/ota` | GET | OTA firmware update — file picker with real-time progress bar |
-| `/ota/upload` | POST | Receive `.bin`; size check; write to inactive partition; set boot target |
+| `/erase` | GET | Erase all WiFi credentials from NVS and reboot — **auth protected** |
+| `/ota` | GET | OTA firmware update — file picker with real-time progress bar — **auth protected** |
+| `/ota/upload` | POST | Receive `.bin`; size check; write to inactive partition; set boot target — **auth protected** |
 | `/restart` | GET | Reboot the device |
 | `/exit` | GET | Shut down the portal; long press the configured button to reopen |
+| `/auth` | GET | Login page — redirected here when accessing a protected route |
+| `/auth` | POST | Validate password and set session cookie |
 | `/generate_204` | GET | Android captive portal redirect to `192.168.4.1` |
 | `/favicon.ico` | GET | Returns 204 No Content — suppresses browser icon request noise |
 
@@ -464,6 +487,7 @@ Temperature sensor display is conditionally compiled (`CONFIG_SOC_TEMP_SENSOR_SU
 
 | Version | Notes |
 |---------|-------|
+| v1.3.1 | Portal authentication — `/ota`, `/ota/upload`, `/erase` protected by password; session token via `esp_random()`; `/auth` GET+POST routes; `auth_password` config field; `PORTAL_AUTH_PASSWORD` Kconfig option |
 | v1.3.0 | AP security — WPA2/WPA3 mixed mode default, MAC-derived SSID suffix, password validation, `WIDF_EVENT_AP_PASSWORD_FALLBACK`; `PORTAL_AP_PASSWORD` and `PORTAL_AP_AUTHMODE` Kconfig options |
 | v1.2.0 | README overhaul; `event_callbacks` example added; `custom_config` updated for flow control modes |
 | v1.1.3 | Multi-network credentials — 3 slots, indexed NVS (`ssid_0/pass_0`), newest-first connect order, per-network retries |

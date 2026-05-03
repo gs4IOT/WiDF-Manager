@@ -1,5 +1,5 @@
 /*  widf_mngr_handlers.c — HTTP handlers for WIDF Manager
- *    WIDF Manager v1.3.0 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.3.1 — ESP-IDF native, ESP32 family
  *
  *    All httpd URI handler functions and start_webserver() live here.
  *    System logic (WiFi, NVS, scan, app_main) stays in widf_mngr_main.c.
@@ -16,10 +16,13 @@
  *      wifi_refresh_handler GET /wifi/refresh  Re-scan and redirect
  *      save_post_handler    POST /save         Save credentials, reboot
  *      info_get_handler     GET /info          Live device + WiFi info
- *      erase_handler        GET /erase         Wipe NVS credentials, reboot
- *      ota_get_handler      GET /ota           OTA placeholder
+ *      erase_handler        GET /erase         Wipe NVS credentials, reboot (auth protected)
+ *      ota_get_handler      GET /ota           OTA placeholder (auth protected)
+ *      ota_upload_handler   POST /ota/upload   OTA upload (auth protected)
  *      restart_handler      GET /restart       Reboot
  *      exit_handler         GET /exit          Stop server, set exit flag
+ *      auth_get_handler     GET /auth          Login page
+ *      auth_post_handler    POST /auth         Validate password, set session cookie
  */
 
 #include <string.h>
@@ -37,6 +40,7 @@
 #include "esp_app_desc.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include "esp_random.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #ifdef CONFIG_SOC_TEMP_SENSOR_SUPPORTED
@@ -57,6 +61,66 @@ char           g_reconnect_ssid[33]  = {0};
 char           g_reconnect_pass[65]  = {0};
 
 /* ── Kconfig alias ───────────────────────────────────────────────────────── */
+
+/* ── Portal authentication ───────────────────────────────────────────────── */
+/* Session token — generated at portal start, cleared on portal close.
+ * Empty string means no active session. */
+static char s_auth_token[33] = {0};  /* 16 bytes hex + null */
+
+static void auth_generate_token(void)
+{
+    uint32_t r1 = esp_random();
+    uint32_t r2 = esp_random();
+    uint32_t r3 = esp_random();
+    uint32_t r4 = esp_random();
+    snprintf(s_auth_token, sizeof(s_auth_token),
+             "%08lX%08lX%08lX%08lX",
+             (unsigned long)r1, (unsigned long)r2,
+             (unsigned long)r3, (unsigned long)r4);
+}
+
+void auth_clear_token(void)
+{
+    memset(s_auth_token, 0, sizeof(s_auth_token));
+}
+
+static bool auth_enabled(void)
+{
+    extern const widf_mngr_config_t *widf_mngr_get_config(void);
+    const widf_mngr_config_t *cfg = widf_mngr_get_config();
+    return cfg && strlen(cfg->auth_password) > 0;
+}
+
+static bool auth_check(httpd_req_t *req)
+{
+    if (!auth_enabled()) return true;
+    if (s_auth_token[0] == '\0') return false;
+
+    size_t cookie_len = httpd_req_get_hdr_value_len(req, "Cookie");
+    if (cookie_len == 0) return false;
+
+    char *cookie = malloc(cookie_len + 1);
+    if (!cookie) return false;
+    httpd_req_get_hdr_value_str(req, "Cookie", cookie, cookie_len + 1);
+
+    char needle[48] = {0};
+    snprintf(needle, sizeof(needle), "widf_auth=%s", s_auth_token);
+    bool valid = (strstr(cookie, needle) != NULL);
+    free(cookie);
+    return valid;
+}
+
+static esp_err_t auth_redirect(httpd_req_t *req, const char *next)
+{
+    char location[64] = {0};
+    snprintf(location, sizeof(location), "/auth?next=%s", next);
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", location);
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+
 #define PORTAL_AP_SSID  CONFIG_PORTAL_AP_SSID
 
 /* ── NVS ─────────────────────────────────────────────────────────────────── */
@@ -330,7 +394,7 @@ esp_err_t menu_get_handler(httpd_req_t *req)
              "</div></body></html>",
              PORTAL_AP_SSID, status);
 
-    char page[3072] = {0};
+    char page[4096] = {0};
     snprintf(page, sizeof(page), "%s%s", PAGE_HEAD("WIDF Manager"), body);
 
     httpd_resp_set_type(req, "text/html; charset=utf-8");
@@ -663,6 +727,7 @@ esp_err_t info_get_handler(httpd_req_t *req)
  *   Note: erases all NVS namespaces, not just wifi_creds. */
 esp_err_t erase_handler(httpd_req_t *req)
 {
+    if (!auth_check(req)) return auth_redirect(req, "/erase");
     const char *resp =
     PAGE_HEAD("Erasing...")
     "<div class='card'>"
@@ -683,6 +748,7 @@ esp_err_t erase_handler(httpd_req_t *req)
  *   Uses XMLHttpRequest upload.onprogress for client-side progress — no SSE needed. */
 esp_err_t ota_get_handler(httpd_req_t *req)
 {
+    if (!auth_check(req)) return auth_redirect(req, "/ota");
     const esp_partition_t *running = esp_ota_get_running_partition();
     const esp_app_desc_t  *app    = esp_app_get_description();
 
@@ -816,6 +882,7 @@ esp_err_t ota_get_handler(httpd_req_t *req)
  *   Chunk size of 1024 bytes balances RAM usage and write speed. */
 esp_err_t ota_upload_handler(httpd_req_t *req)
 {
+    if (!auth_check(req)) return auth_redirect(req, "/ota");
     esp_ota_handle_t      ota_handle = 0;
     const esp_partition_t *ota_part  = esp_ota_get_next_update_partition(NULL);
 
@@ -1004,8 +1071,105 @@ esp_err_t exit_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* ── Authentication Handlers ─────────────────────────────────────────────── */
+
+/* GET /auth — login page.
+ *   Accepts optional ?next= param to redirect after successful login.
+ *   Shows error message if ?error=1 is present. */
+esp_err_t auth_get_handler(httpd_req_t *req)
+{
+    char next[32] = "/";
+    char query[64] = {0};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char next_raw[32] = {0};
+        if (httpd_query_key_value(query, "next", next_raw,
+                                  sizeof(next_raw)) == ESP_OK) {
+            strncpy(next, next_raw, sizeof(next) - 1);
+        }
+    }
+
+    bool show_error = (strstr(query, "error=1") != NULL);
+
+    char page[3072] = {0};
+    snprintf(page, sizeof(page),
+             PAGE_HEAD("Portal Login")
+             "<div class='card'>"
+             "<h2>&#x1F512;&nbsp; Authentication Required</h2>"
+             "<p>Enter the portal password to continue.</p>"
+             "%s"
+             "<form method='POST' action='/auth'>"
+             "<input type='hidden' name='next' value='%s'>"
+             "<div class='pw' style='margin-top:14px;position:relative'>"
+             "<input type='password' name='password' id='pw' "
+             "style='width:100%%;padding:11px 60px 11px 14px;"
+             "border:1.5px solid #e0e0e0;border-radius:10px;font-size:.93rem'"
+             " placeholder='Enter password' autofocus>"
+             "<button type='button' class='eye' id='eyebtn' onclick=\""
+             "var p=document.getElementById('pw');"
+             "p.type=p.type=='password'?'text':'password';"
+             "this.textContent=p.type=='password'?'Show':'Hide'\">Show</button>"
+             "</div>"
+             "<button class='btn pri' type='submit' "
+             "style='margin-top:14px'>Unlock</button>"
+             "</form>"
+             "<a class='btn sec' href='/'>&#8592; Back</a>"
+             "</div></body></html>",
+             show_error ? "<p style='color:#c0392b;font-size:.85rem;"
+                          "margin-bottom:8px'>Incorrect password.</p>" : "",
+             next);
+
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_sendstr(req, page);
+    return ESP_OK;
+}
+
+/* POST /auth — validate password and set session cookie.
+ *   On success: set cookie, redirect to next.
+ *   On failure: redirect back to /auth?error=1&next=<next>. */
+esp_err_t auth_post_handler(httpd_req_t *req)
+{
+    char buf[128] = {0};
+    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (len <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty request");
+        return ESP_FAIL;
+    }
+    buf[len] = '\0';
+
+    char password_raw[65] = {0}, password[65] = {0};
+    char next_raw[32] = {0}, next[32] = "/";
+    httpd_query_key_value(buf, "password", password_raw, sizeof(password_raw));
+    httpd_query_key_value(buf, "next",     next_raw,     sizeof(next_raw));
+    url_decode(password_raw, password, sizeof(password));
+    url_decode(next_raw,     next,     sizeof(next));
+
+    extern const widf_mngr_config_t *widf_mngr_get_config(void);
+    const widf_mngr_config_t *cfg = widf_mngr_get_config();
+    const char *correct = cfg ? cfg->auth_password : "";
+
+    if (strcmp(password, correct) != 0) {
+        char location[64] = {0};
+        snprintf(location, sizeof(location), "/auth?error=1&next=%s", next);
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", location);
+        httpd_resp_send(req, NULL, 0);
+        ESP_LOGW(TAG, "Auth failed — wrong password");
+        return ESP_OK;
+    }
+
+    char cookie[64] = {0};
+    snprintf(cookie, sizeof(cookie), "widf_auth=%s; Path=/; HttpOnly",
+             s_auth_token);
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Set-Cookie", cookie);
+    httpd_resp_set_hdr(req, "Location", next);
+    httpd_resp_send(req, NULL, 0);
+    ESP_LOGI(TAG, "Auth success — session granted");
+    return ESP_OK;
+}
+
 /* ── Web Server ──────────────────────────────────────────────────────────── */
-/* Starts the HTTP server, registers all 9 URI handlers, stores handle in
+/* Starts the HTTP server, registers all 15 URI handlers, stores handle in
  *   g_server so exit_handler can signal a stop via g_exit_requested.
  *   stack_size bumped to 8192 for the info page data gathering.
  *   max_uri_handlers set to 16 for future expansion. */
@@ -1021,18 +1185,23 @@ httpd_handle_t start_webserver(void)
         return NULL;
     }
 
-    httpd_uri_t menu_uri    = { .uri = "/",             .method = HTTP_GET,  .handler = menu_get_handler    };
-    httpd_uri_t portal_uri  = { .uri = "/wifi",         .method = HTTP_GET,  .handler = portal_get_handler  };
-    httpd_uri_t refresh_uri = { .uri = "/wifi/refresh", .method = HTTP_GET,  .handler = wifi_refresh_handler};
-    httpd_uri_t save_uri    = { .uri = "/save",         .method = HTTP_POST, .handler = save_post_handler   };
-    httpd_uri_t info_uri    = { .uri = "/info",         .method = HTTP_GET,  .handler = info_get_handler    };
-    httpd_uri_t erase_uri   = { .uri = "/erase",        .method = HTTP_GET,  .handler = erase_handler       };
-    httpd_uri_t ota_uri        = { .uri = "/ota",         .method = HTTP_GET,  .handler = ota_get_handler    };
-    httpd_uri_t ota_upload_uri = { .uri = "/ota/upload",   .method = HTTP_POST, .handler = ota_upload_handler };
-    httpd_uri_t restart_uri = { .uri = "/restart",      .method = HTTP_GET,  .handler = restart_handler     };
-    httpd_uri_t exit_uri    = { .uri = "/exit",         .method = HTTP_GET,  .handler = exit_handler        };
-    httpd_uri_t captive_uri = { .uri = "/generate_204", .method = HTTP_GET, .handler = captive_redirect_handler };
-    httpd_uri_t favicon_uri = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler };
+    /* Generate a fresh session token for this portal session */
+    auth_generate_token();
+
+    httpd_uri_t menu_uri       = { .uri = "/",             .method = HTTP_GET,  .handler = menu_get_handler         };
+    httpd_uri_t portal_uri     = { .uri = "/wifi",         .method = HTTP_GET,  .handler = portal_get_handler       };
+    httpd_uri_t refresh_uri    = { .uri = "/wifi/refresh", .method = HTTP_GET,  .handler = wifi_refresh_handler     };
+    httpd_uri_t save_uri       = { .uri = "/save",         .method = HTTP_POST, .handler = save_post_handler        };
+    httpd_uri_t info_uri       = { .uri = "/info",         .method = HTTP_GET,  .handler = info_get_handler         };
+    httpd_uri_t erase_uri      = { .uri = "/erase",        .method = HTTP_GET,  .handler = erase_handler            };
+    httpd_uri_t ota_uri        = { .uri = "/ota",          .method = HTTP_GET,  .handler = ota_get_handler          };
+    httpd_uri_t ota_upload_uri = { .uri = "/ota/upload",   .method = HTTP_POST, .handler = ota_upload_handler       };
+    httpd_uri_t restart_uri    = { .uri = "/restart",      .method = HTTP_GET,  .handler = restart_handler          };
+    httpd_uri_t exit_uri       = { .uri = "/exit",         .method = HTTP_GET,  .handler = exit_handler             };
+    httpd_uri_t captive_uri    = { .uri = "/generate_204", .method = HTTP_GET,  .handler = captive_redirect_handler };
+    httpd_uri_t favicon_uri    = { .uri = "/favicon.ico",  .method = HTTP_GET,  .handler = favicon_handler          };
+    httpd_uri_t auth_get_uri   = { .uri = "/auth",         .method = HTTP_GET,  .handler = auth_get_handler         };
+    httpd_uri_t auth_post_uri  = { .uri = "/auth",         .method = HTTP_POST, .handler = auth_post_handler        };
 
     httpd_register_uri_handler(g_server, &favicon_uri);
     httpd_register_uri_handler(g_server, &captive_uri);
@@ -1046,8 +1215,10 @@ httpd_handle_t start_webserver(void)
     httpd_register_uri_handler(g_server, &ota_upload_uri);
     httpd_register_uri_handler(g_server, &restart_uri);
     httpd_register_uri_handler(g_server, &exit_uri);
+    httpd_register_uri_handler(g_server, &auth_get_uri);
+    httpd_register_uri_handler(g_server, &auth_post_uri);
 
-    ESP_LOGI(TAG, "HTTP server started — 13 routes registered");
+    ESP_LOGI(TAG, "HTTP server started — 15 routes registered");
     return g_server;
 }
 
