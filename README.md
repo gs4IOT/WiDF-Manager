@@ -13,6 +13,7 @@ Designed as a reusable subsystem: call `widf_mngr_run()` from your `app_main()` 
 - **Event callbacks** — register a single `on_event` callback to receive all lifecycle events: STA connect/disconnect/fail, portal open/close, and credential save
 - **Flow control modes** — three independent mode fields control behavior at each lifecycle transition: on boot failure, on credential save, and on STA connect
 - **Multi-network credentials** — up to 3 networks stored in NVS, tried newest-first on boot; new credentials shift existing ones down, oldest dropped at limit
+- **AP security** — WPA2, WPA3, and WPA2/WPA3 mixed mode support for the portal AP; MAC-derived SSID suffix and password fallback when using Kconfig defaults
 - **No-reboot reconnect** — after credentials are saved via the portal, the WiFi stack reconnects in place without rebooting the device
 - **Network scan** — live list of nearby networks with signal strength bars, dBm value, and encryption type
 - **Hidden network support** — toggle to reveal hidden APs; SSID entered manually
@@ -124,7 +125,8 @@ typedef struct {
     /* AP */
     char              ap_ssid[32];       /* Portal AP network name                        */
     char              ap_password[64];   /* AP password — empty string = open             */
-    wifi_auth_mode_t  ap_authmode;       /* WIFI_AUTH_OPEN / WPA2_PSK / WPA3_PSK         */
+    wifi_auth_mode_t  ap_authmode;       /* WIFI_AUTH_OPEN / WPA2_PSK / WPA3_PSK /        */
+                                         /* WPA2_WPA3_PSK (default)                       */
 
     /* Portal */
     uint32_t          portal_timeout_s;  /* Seconds before portal closes                  */
@@ -206,8 +208,36 @@ typedef void (*widf_event_cb_t)(const widf_event_data_t *event);
 | `WIDF_EVENT_PORTAL_OPENED` | HTTP server started | — |
 | `WIDF_EVENT_PORTAL_CLOSED` | HTTP server stopped | — |
 | `WIDF_EVENT_CREDENTIALS_SAVED` | New credentials written to NVS | `ssid` |
+| `WIDF_EVENT_AP_PASSWORD_FALLBACK` | Invalid AP password, MAC-derived fallback used | `password`, `reason` |
 
 The callback runs in the `widf_mngr` task context — keep it non-blocking.
+
+---
+
+## AP Security
+
+The portal AP supports WPA2, WPA3, and WPA2/WPA3 mixed mode. Configure via `ap_authmode` and `ap_password` in the config struct, or via Kconfig defaults.
+
+### SSID MAC suffix
+
+When `ap_authmode` is not `WIFI_AUTH_OPEN` and `ap_ssid` matches the Kconfig default (`WIDF-MANAGER`), the last 4 hex characters of the AP MAC address are automatically appended to the SSID — for example `WIDF-MANAGER-A348`. This makes the AP uniquely identifiable in a network scan without any host configuration. Custom SSIDs are never modified.
+
+### Password validation and fallback
+
+If `ap_authmode` is not `WIFI_AUTH_OPEN` and the password is empty or shorter than 8 characters, a MAC-derived fallback password is generated automatically in the format `widf` + last 3 MAC bytes uppercase (e.g. `widfA34819`). The fallback is reported via `WIDF_EVENT_AP_PASSWORD_FALLBACK` so the host can log or display it.
+
+| Scenario | Behavior |
+|----------|----------|
+| Valid password (≥ 8 chars) | Used as-is, no event fired |
+| Empty or too short | MAC-derived fallback used, `WIDF_EVENT_AP_PASSWORD_FALLBACK` fired |
+| `WIFI_AUTH_OPEN` | Password ignored entirely |
+
+### Kconfig options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `PORTAL_AP_PASSWORD` | `""` | AP password — leave empty for open AP |
+| `PORTAL_AP_AUTHMODE` | `WPA2/WPA3 mixed` | AP security mode |
 
 ---
 
@@ -377,6 +407,8 @@ Run `idf.py menuconfig` → **WIDF Manager Configuration** for build-time defaul
 | Option | Default | Description |
 |--------|---------|-------------|
 | `PORTAL_AP_SSID` | `WIDF-MANAGER` | SSID broadcast by the portal AP |
+| `PORTAL_AP_PASSWORD` | `""` | AP password — leave empty for open AP (min 8 chars for WPA2/WPA3) |
+| `PORTAL_AP_AUTHMODE` | `WPA2/WPA3 mixed` | AP security mode — OPEN, WPA2, WPA3, or WPA2/WPA3 mixed |
 | `PORTAL_AP_CHANNEL` | `3` | WiFi channel for the AP (1–13) |
 | `PORTAL_MAX_STA_CONN` | `5` | Maximum simultaneous clients on the portal AP |
 | `PORTAL_TIMEOUT_S` | `180` | Seconds before the portal auto-closes |
@@ -432,6 +464,7 @@ Temperature sensor display is conditionally compiled (`CONFIG_SOC_TEMP_SENSOR_SU
 
 | Version | Notes |
 |---------|-------|
+| v1.3.0 | AP security — WPA2/WPA3 mixed mode default, MAC-derived SSID suffix, password validation, `WIDF_EVENT_AP_PASSWORD_FALLBACK`; `PORTAL_AP_PASSWORD` and `PORTAL_AP_AUTHMODE` Kconfig options |
 | v1.2.0 | README overhaul; `event_callbacks` example added; `custom_config` updated for flow control modes |
 | v1.1.3 | Multi-network credentials — 3 slots, indexed NVS (`ssid_0/pass_0`), newest-first connect order, per-network retries |
 | v1.1.2 | Flow control enums (`widf_fallback_mode_t`, `widf_on_save_mode_t`, `widf_on_connect_mode_t`); WiFi stack reconnect replaces `esp_restart()`; `app_main()` removed from component |

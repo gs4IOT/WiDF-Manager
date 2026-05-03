@@ -6,8 +6,8 @@ Demonstrates how to receive lifecycle events from WIDF Manager using the
 ## What it shows
 
 - Registering an event callback via `cfg.on_event`
-- Handling all seven lifecycle events with appropriate log levels
-- Accessing event data fields (SSID, IP, retry count)
+- Handling all eight lifecycle events with appropriate log levels
+- Accessing event data fields (SSID, IP, retry count, fallback password)
 - Distinction between `STA_FAILED` (connect attempt exhausted) and `STA_DISCONNECTED` (mid-session drop)
 
 ## Events
@@ -21,6 +21,7 @@ Demonstrates how to receive lifecycle events from WIDF Manager using the
 | `WIDF_EVENT_PORTAL_OPENED` | HTTP server started | — |
 | `WIDF_EVENT_PORTAL_CLOSED` | HTTP server stopped | — |
 | `WIDF_EVENT_CREDENTIALS_SAVED` | New credentials in NVS | `ssid` |
+| `WIDF_EVENT_AP_PASSWORD_FALLBACK` | Invalid AP password, MAC-derived fallback used | `password`, `reason` |
 
 ## Notes
 

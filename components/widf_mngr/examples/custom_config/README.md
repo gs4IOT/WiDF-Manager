@@ -7,9 +7,21 @@ Demonstrates runtime configuration using `widf_mngr_config_t` and flow control m
 - Custom AP SSID and mDNS hostname (`mydevice.local`)
 - Custom GPIO pin and long press duration
 - Shorter portal timeout (60 seconds)
+- AP security — commented block showing WPA2/WPA3 configuration
 - `fallback_mode` — behavior when no saved network connects on boot
 - `on_save_mode` — behavior after credentials are saved via the portal
 - `on_connect_mode` — behavior after STA connects successfully
+
+## AP security
+
+Uncomment the AP security block in `main.c` to enable WPA2/WPA3:
+
+```c
+strncpy(cfg.ap_password, "mypassword", sizeof(cfg.ap_password));
+cfg.ap_authmode = WIFI_AUTH_WPA2_WPA3_PSK;
+```
+
+When using the Kconfig default SSID (`WIDF-MANAGER`) with a secured auth mode, the last 4 MAC hex chars are appended automatically — e.g. `WIDF-MANAGER-A348`. If the password is empty or too short, a MAC-derived fallback is used and `WIDF_EVENT_AP_PASSWORD_FALLBACK` is fired.
 
 ## Flow control modes
 
