@@ -5,13 +5,15 @@
  *  update UI, trigger application logic, or log device status.
  *
  *  Events fired:
- *    WIDF_EVENT_STA_TRYING        — attempting to connect to a network
- *    WIDF_EVENT_STA_CONNECTED     — STA connected and IP acquired
- *    WIDF_EVENT_STA_DISCONNECTED  — STA lost connection mid-session
- *    WIDF_EVENT_STA_FAILED        — all retries exhausted for a network
- *    WIDF_EVENT_PORTAL_OPENED     — portal HTTP server started
- *    WIDF_EVENT_PORTAL_CLOSED     — portal HTTP server stopped
- *    WIDF_EVENT_CREDENTIALS_SAVED — new credentials written to NVS
+ *    WIDF_EVENT_STA_TRYING            — attempting to connect to a network
+ *    WIDF_EVENT_STA_CONNECTED         — STA connected and IP acquired
+ *    WIDF_EVENT_STA_DISCONNECTED      — STA lost connection mid-session
+ *    WIDF_EVENT_STA_FAILED            — all retries exhausted for a network
+ *    WIDF_EVENT_PORTAL_OPENED         — portal HTTP server started
+ *    WIDF_EVENT_PORTAL_CLOSED         — portal HTTP server stopped
+ *    WIDF_EVENT_CREDENTIALS_SAVED     — new credentials written to NVS
+ *    WIDF_EVENT_AP_PASSWORD_FALLBACK  — invalid AP password, MAC-derived
+ *                                       fallback used
  */
 
 #include <string.h>
@@ -64,6 +66,15 @@ static void on_widf_event(const widf_event_data_t *evt)
             /* Fired immediately after new credentials are written to NVS.
              * Reconnect attempt follows if on_save_mode == WIDF_ON_SAVE_RECONNECT. */
             ESP_LOGI(TAG, "Credentials saved for: %s", evt->data.saved.ssid);
+            break;
+
+        case WIDF_EVENT_AP_PASSWORD_FALLBACK:
+            /* Fired when AP password is invalid (empty or too short).
+             * A MAC-derived fallback password is used instead.
+             * Log or display the fallback password so the user can connect. */
+            ESP_LOGW(TAG, "AP password %s — fallback password: %s",
+                     evt->data.ap_fallback.reason,
+                     evt->data.ap_fallback.password);
             break;
     }
 }

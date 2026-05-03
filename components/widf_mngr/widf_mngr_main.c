@@ -1,5 +1,5 @@
 /*  widf_mngr_main.c — WIDF Manager system core
- *    WIDF Manager v1.2.0 — ESP-IDF native, ESP32 family
+ *    WIDF Manager v1.3.0 — ESP-IDF native, ESP32 family
  *
  *    Developed and tested on M5Stamp C3 (ESP32-C3). Compatible with any
  *    ESP32 variant — set reopen_gpio in widf_mngr_config_t to match your board.
@@ -275,25 +275,88 @@ static void wifi_init_common(void)
                                                         &wifi_event_handler, NULL, NULL));
 }
 
+/* ── WiFi AP configure ───────────────────────────────────────────────────── */
+/* Configures and starts the AP interface.
+ *   - If authmode is not OPEN and password is invalid (empty or < 8 chars):
+ *     generates a MAC-derived fallback password and fires
+ *     WIDF_EVENT_AP_PASSWORD_FALLBACK.
+ *   - If authmode is not OPEN and ap_ssid matches the Kconfig default:
+ *     appends last 4 MAC hex chars to the SSID (e.g. WIDF-MANAGER-A348).
+ *   - WPA3 authmode cases guarded by CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT. */
 static void wifi_configure_ap(void)
 {
-    wifi_config_t ap_cfg = {
-        .ap = {
-            .channel        = CONFIG_PORTAL_AP_CHANNEL,
-            .max_connection = CONFIG_PORTAL_MAX_STA_CONN,
-            .authmode       = s_cfg->ap_authmode,
-        },
-    };
-    strncpy((char *)ap_cfg.ap.ssid, s_cfg->ap_ssid, sizeof(ap_cfg.ap.ssid) - 1);
-    ap_cfg.ap.ssid_len = strlen(s_cfg->ap_ssid);
+    uint8_t ap_mac[6] = {0};
+    esp_wifi_get_mac(WIFI_IF_AP, ap_mac);
 
-    if (s_cfg->ap_authmode != WIFI_AUTH_OPEN) {
-        strncpy((char *)ap_cfg.ap.password, s_cfg->ap_password,
-                sizeof(ap_cfg.ap.password) - 1);
-    }
+    /* ── SSID — append MAC suffix when using default SSID with security ── */
+    char final_ssid[33] = {0};
+    if (s_cfg->ap_authmode != WIFI_AUTH_OPEN &&
+        strcmp(s_cfg->ap_ssid, CONFIG_PORTAL_AP_SSID) == 0) {
+        char base[28] = {0};
+    strncpy(base, s_cfg->ap_ssid, sizeof(base) - 1);
+    snprintf(final_ssid, sizeof(final_ssid), "%s-%02X%02X",
+             base, ap_mac[4], ap_mac[5]);
+    ESP_LOGI(TAG, "AP SSID: %s (MAC suffix appended)", final_ssid);
+        } else {
+            strncpy(final_ssid, s_cfg->ap_ssid, sizeof(final_ssid) - 1);
+            ESP_LOGI(TAG, "AP SSID: %s", final_ssid);
+        }
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
+        /* ── Password validation and fallback ────────────────────────────────── */
+        char final_password[65] = {0};
+
+        if (s_cfg->ap_authmode != WIFI_AUTH_OPEN) {
+            size_t pass_len = strlen(s_cfg->ap_password);
+
+            if (pass_len == 0 || pass_len < 8) {
+                /* Generate MAC-derived fallback: "widf" + last 3 bytes uppercase */
+                snprintf(final_password, sizeof(final_password),
+                         "widf%02X%02X%02X",
+                         ap_mac[3], ap_mac[4], ap_mac[5]);
+
+                const char *reason = (pass_len == 0) ? "empty" : "too_short";
+                ESP_LOGW(TAG, "AP password %s — using MAC-derived fallback: %s",
+                         reason, final_password);
+
+                /* Fire fallback event */
+                widf_event_data_t evt = { .event = WIDF_EVENT_AP_PASSWORD_FALLBACK };
+                strncpy(evt.data.ap_fallback.password, final_password,
+                        sizeof(evt.data.ap_fallback.password) - 1);
+                strncpy(evt.data.ap_fallback.reason, reason,
+                        sizeof(evt.data.ap_fallback.reason) - 1);
+                widf_fire_event(&evt);
+
+            } else {
+                strncpy(final_password, s_cfg->ap_password,
+                        sizeof(final_password) - 1);
+            }
+        }
+
+        /* ── Build AP config ─────────────────────────────────────────────────── */
+        wifi_config_t ap_cfg = {
+            .ap = {
+                .channel        = CONFIG_PORTAL_AP_CHANNEL,
+                .max_connection = CONFIG_PORTAL_MAX_STA_CONN,
+                .authmode       = s_cfg->ap_authmode,
+            },
+        };
+
+        strncpy((char *)ap_cfg.ap.ssid, final_ssid, sizeof(ap_cfg.ap.ssid) - 1);
+        ap_cfg.ap.ssid_len = strlen(final_ssid);
+
+        if (s_cfg->ap_authmode != WIFI_AUTH_OPEN) {
+            strncpy((char *)ap_cfg.ap.password, final_password,
+                    sizeof(ap_cfg.ap.password) - 1);
+            #ifdef CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT
+            if (s_cfg->ap_authmode == WIFI_AUTH_WPA3_PSK ||
+                s_cfg->ap_authmode == WIFI_AUTH_WPA2_WPA3_PSK) {
+                ap_cfg.ap.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+                }
+                #endif
+        }
+
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
 }
 
 /* ── WiFi scan ───────────────────────────────────────────────────────────── */

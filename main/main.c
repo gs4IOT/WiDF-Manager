@@ -32,6 +32,11 @@ static void on_widf_event(const widf_event_data_t *evt)
             ESP_LOGI(TAG, "EVENT: CREDENTIALS_SAVED — %s",
                      evt->data.saved.ssid);
             break;
+        case WIDF_EVENT_AP_PASSWORD_FALLBACK:
+            ESP_LOGW(TAG, "AP password %s — fallback password: %s",
+                     evt->data.ap_fallback.reason,
+                     evt->data.ap_fallback.password);
+            break;
     }
 }
 

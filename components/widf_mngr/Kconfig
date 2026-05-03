@@ -4,7 +4,54 @@ menu "WIDF Manager Configuration"
         string "Portal AP SSID"
         default "WIDF-MANAGER"
         help
-            SSID (network name) broadcasted by the captive portal AP to connect to.
+            SSID (network name) broadcasted by the captive portal AP.
+            When AP security is enabled and this default value is used,
+            the last 4 characters of the AP MAC address are automatically
+            appended (e.g. WIDF-MANAGER-A348).
+
+    config PORTAL_AP_PASSWORD
+        string "Portal AP password"
+        default ""
+        help
+            Password for the portal AP. Leave empty for an open AP.
+            Minimum 8 characters required for WPA2/WPA3.
+            If too short or empty with a secured auth mode, a MAC-derived
+            fallback password is used and WIDF_EVENT_AP_PASSWORD_FALLBACK
+            is fired.
+
+    choice PORTAL_AP_AUTHMODE
+        prompt "Portal AP authentication mode"
+        default PORTAL_AP_AUTHMODE_WPA2_WPA3
+        help
+            Security mode for the portal AP.
+            WPA2/WPA3 mixed mode is recommended for best compatibility.
+            Requires a password of at least 8 characters.
+
+        config PORTAL_AP_AUTHMODE_OPEN
+            bool "Open (no password)"
+
+        config PORTAL_AP_AUTHMODE_WPA2
+            bool "WPA2-PSK"
+
+        config PORTAL_AP_AUTHMODE_WPA3
+            bool "WPA3-SAE"
+            depends on ESP_WIFI_SOFTAP_SAE_SUPPORT
+
+        config PORTAL_AP_AUTHMODE_WPA2_WPA3
+            bool "WPA2/WPA3 mixed (recommended)"
+            depends on ESP_WIFI_SOFTAP_SAE_SUPPORT
+
+    endchoice
+
+    config PORTAL_AP_AUTHMODE
+        int
+        default 0 if PORTAL_AP_AUTHMODE_OPEN
+        default 3 if PORTAL_AP_AUTHMODE_WPA2
+        default 6 if PORTAL_AP_AUTHMODE_WPA3
+        default 7 if PORTAL_AP_AUTHMODE_WPA2_WPA3
+        help
+            Resolved integer value of wifi_auth_mode_t passed to the WiFi driver.
+            0=OPEN, 3=WPA2_PSK, 6=WPA3_PSK, 7=WPA2_WPA3_PSK.
 
     config PORTAL_AP_CHANNEL
         int "Portal AP Channel"
@@ -34,8 +81,8 @@ menu "WIDF Manager Configuration"
         range 1 10
         default 3
         help
-            Number of times to retry a STA connection before giving up
-            and opening the portal for new credentials.
+            Number of times to retry a STA connection per network before
+            moving to the next saved network.
 
     config PORTAL_BUTTON_GPIO
         int "Portal reopen button GPIO pin"
@@ -54,7 +101,7 @@ menu "WIDF Manager Configuration"
         help
             How long the button must be held continuously to trigger a
             portal reopen. 3000 ms (3 seconds) is the default.
-    
+
     config PORTAL_DNS_ENABLED
         bool "Enable captive portal DNS server"
         default n

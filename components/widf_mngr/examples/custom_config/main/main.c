@@ -16,6 +16,13 @@ void app_main(void)
     strncpy(cfg.ap_ssid,  "MyDevice-Setup", sizeof(cfg.ap_ssid));
     strncpy(cfg.hostname, "mydevice",        sizeof(cfg.hostname));
 
+    /* AP security — uncomment to enable WPA2/WPA3 with a custom password.
+     * Minimum 8 characters required. If the default SSID is used, the last
+     * 4 MAC hex chars are appended automatically (e.g. WIDF-MANAGER-A348).
+     * A MAC-derived fallback password is used if the password is invalid. */
+    // strncpy(cfg.ap_password, "mypassword", sizeof(cfg.ap_password));
+    // cfg.ap_authmode = WIFI_AUTH_WPA2_WPA3_PSK;
+
     /* GPIO long press to reopen portal — adjust for your board:
      *   GPIO3  — M5Stamp C3 (default)
      *   GPIO0  — ESP32 DevKit
